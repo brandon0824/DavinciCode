@@ -1,17 +1,18 @@
-import type { Metadata } from "next"
-import "./globals.css"
+import "./globals.css";
 
-export const metadata: Metadata = {
-  title: "Davinci Code Game",
-  description: "Realtime card game demo",
+export const metadata = {
+  title: '达芬奇密码 - 游戏房间管理系统',
+  description: '一个现代化的游戏房间管理系统',
 }
 
 export default function RootLayout({
   children,
-}: Readonly<{ children: React.ReactNode }>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
     <html lang="zh-CN">
-      <body className="antialiased">{children}</body>
+      <body>{children}</body>
     </html>
   )
 }

@@ -1,26 +1,122 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 94.1%;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* 游戏相关样式 */
+.game-status {
+  @apply text-lg font-semibold text-center py-2 px-4 rounded-lg;
+}
+
+.game-status.waiting {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+.game-status.playing {
+  @apply bg-green-100 text-green-800;
+}
+
+.game-status.finished {
+  @apply bg-gray-100 text-gray-800;
+}
+
+/* 卡牌样式 */
+.card {
+  @apply w-16 h-24 rounded-lg shadow-md border-2 cursor-pointer transition-all duration-200;
+}
+
+.card:hover {
+  @apply transform scale-105 shadow-lg;
+}
+
+.card.red {
+  @apply bg-red-500 text-white;
+}
+
+.card.blue {
+  @apply bg-blue-500 text-white;
+}
+
+.card.green {
+  @apply bg-green-500 text-white;
+}
+
+.card.yellow {
+  @apply bg-yellow-500 text-white;
+}
+
+.card.purple {
+  @apply bg-purple-500 text-white;
+}
+
+.card.hidden {
+  @apply bg-gray-800 text-gray-300;
+}
+
+/* 玩家状态 */
+.player-host {
+  @apply bg-yellow-100 border-yellow-300;
+}
+
+.player-current {
+  @apply bg-blue-100 border-blue-300;
+}
+
+.player-normal {
+  @apply bg-gray-100 border-gray-300;
 }

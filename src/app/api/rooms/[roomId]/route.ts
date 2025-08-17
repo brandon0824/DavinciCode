@@ -1,30 +1,35 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { getPlayers, addPlayer, removePlayer } from '@/lib/roomStore'
+import { NextRequest, NextResponse } from 'next/server';
+import { getRoom, getRoomPlayers } from '@/lib/roomService';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function GET(_req: NextRequest, context: any) {
-  const { roomId } = context.params as { roomId: string }
-  const players = getPlayers(roomId)
-  return NextResponse.json({ players })
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function POST(req: NextRequest, context: any) {
-  const { roomId } = context.params as { roomId: string }
-  const { name } = await req.json()
-  const result = addPlayer(roomId, name)
-  if (!result.success) {
-    return NextResponse.json({ error: result.error }, { status: 400 })
+// 获取房间信息
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { roomId: string } }
+) {
+  try {
+    const { roomId } = params;
+    
+    // 获取房间信息
+    const room = await getRoom(roomId);
+    if (!room) {
+      return NextResponse.json(
+        { error: '房间不存在' },
+        { status: 404 }
+      );
+    }
+    
+    // 获取房间玩家列表
+    const players = await getRoomPlayers(roomId);
+    
+    return NextResponse.json({
+      room,
+      players,
+    });
+  } catch (error) {
+    console.error('获取房间信息失败:', error);
+    return NextResponse.json(
+      { error: '获取房间信息失败' },
+      { status: 500 }
+    );
   }
-  return NextResponse.json({ players: getPlayers(roomId) })
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function DELETE(req: NextRequest, context: any) {
-  const { roomId } = context.params as { roomId: string }
-  const name = req.nextUrl.searchParams.get('name')
-  if (name) {
-    removePlayer(roomId, name)
-  }
-  return NextResponse.json({ ok: true })
 }
