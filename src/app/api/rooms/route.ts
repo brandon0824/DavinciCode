@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRoom, getRoomList } from '@/lib/roomService';
+import { createRoom, getRoomList, joinRoom } from '@/lib/roomService';
 
 // 获取房间列表
 export async function GET() {
@@ -19,7 +19,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, username, customRoomId } = body;
+    const { name, username, password, customRoomId } = body;
 
     if (!name || !username) {
       return NextResponse.json(
@@ -30,9 +30,9 @@ export async function POST(request: NextRequest) {
 
     // 如果提供了自定义房间号，验证格式
     if (customRoomId) {
-      if (customRoomId.length < 3 || customRoomId.length > 10) {
+      if (customRoomId.length < 4 || customRoomId.length > 10) {
         return NextResponse.json(
-          { error: '自定义房间号长度应为3-10个字符' },
+          { error: '自定义房间号长度应为4-10个字符' },
           { status: 400 }
         );
       }
@@ -44,21 +44,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const roomId = await createRoom({ name, customRoomId });
+    const roomId = await createRoom({ name, password, customRoomId });
     
     // 创建房间后，立即让创建者加入房间
-    const response = await fetch(`${request.nextUrl.origin}/api/rooms/${roomId}/join`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ username }),
-    });
-
-    if (!response.ok) {
-      throw new Error('创建者加入房间失败');
-    }
-
+    await joinRoom({ roomId, username, password });
+ 
     return NextResponse.json({ 
       roomId,
       message: '房间创建成功' 

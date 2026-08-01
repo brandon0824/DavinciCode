@@ -35,15 +35,15 @@ export function delay(ms: number): Promise<void> {
 
 // 验证房间ID格式
 export function validateRoomId(roomId: string): boolean {
-  return /^[A-Z0-9]{6}$/.test(roomId);
+  return /^[a-zA-Z0-9]{4,10}$/.test(roomId);
 }
 
 // 验证用户名格式
 export function validateUsername(username: string): boolean {
-  return username.length >= 2 && username.length <= 20 && /^[a-zA-Z0-9\u4e00-\u9fa5_]+$/.test(username);
+  return username.length >= 1 && username.length <= 20 && /^[a-zA-Z0-9\u4e00-\u9fa5_]+$/.test(username);
 }
 
 // 验证房间名格式
 export function validateRoomName(roomName: string): boolean {
-  return roomName.length >= 2 && roomName.length <= 50;
+  return roomName.length >= 1 && roomName.length <= 50;
 }

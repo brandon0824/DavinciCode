@@ -8,7 +8,7 @@ export async function POST(
   try {
     const { roomId } = params;
     const body = await request.json();
-    const { username } = body;
+    const { username, password } = body;
 
     if (!username) {
       return NextResponse.json(
@@ -27,7 +27,7 @@ export async function POST(
     }
 
     // 加入房间
-    await joinRoom({ roomId, username });
+    await joinRoom({ roomId, username, password });
 
     // 获取更新后的玩家列表
     const players = await getRoomPlayers(roomId);

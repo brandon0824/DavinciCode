@@ -1,174 +1,107 @@
-# DavinciCode
+# 达芬奇密码 (Davinci Code) 在线多人桌游
 
-达芬奇密码游戏 支持实时 多人
+这是一个支持实时多人的“达芬奇密码”在线桌游系统，采用 Next.js 14 App Router + Tailwind CSS + Framer Motion + PostgreSQL 全栈技术开发，支持本地自建数据库运行，并完美适配 Serverless 部署与 Docker 容器化启动。
 
-## 🎨 UI 特性
+---
 
-### 主页面设计
-- **左右两列布局**：左侧包含创建房间和加入房间功能，右侧显示可用房间列表
-- **卡片式设计**：每个功能模块都采用白色卡片设计，带有微妙的阴影和边框
-- **颜色编码**：蓝色用于创建房间，绿色用于加入房间，灰色用于房间列表
-- **响应式设计**：支持桌面和移动设备的响应式布局
+## ✨ 系统核心功能与特色
 
-### 房间页面设计
-- **顶部导航栏**：包含返回按钮、房间信息、玩家数量和操作按钮
-- **中央白色卡片**：显示游戏等待状态和玩家槽位信息
-- **玩家槽位**：4个玩家槽位，已加入的玩家显示绿色背景，空槽位显示灰色背景
-- **操作按钮**：房主可以开始游戏，所有玩家都可以离开房间
+* **🎨 现代化 Better-UI 设计**：
+  * 基于 `better-ui` 设计工程规范，支持全局触觉式按压反馈 (`Scale on Press`)、同心圆角 (`Concentric Radius`) 与多层柔和深浅阴影。
+  * 包含黑白牌面的高质感渲染、新摸牌提示、已公开牌角标及优雅的动效库。
+* **🌗 深浅色双主题模式**：
+  * 支持一键切换浅色/深色主题，首次加载自动匹配系统的 `prefers-color-scheme`，并持久化存储用户的个性化选择。
+* **🔒 房间加密防护**：
+  * 创建房间时支持选择设置房间密码，可用房间列表中优雅展示加密 🔒 标识。加入加密房间需经过安全的密码匹配校验。
+* **🏳️ 认输与断线重连**：
+  * 替换传统的硬性强退，支持游戏中随时“认输”。认输后手牌强制公开并出局，但不强制踢出，允许继续留在房间内实时观战。
+  * 无论是房主还是普通玩家，中途刷新页面或误关浏览器后，只要输入对应用户名和房间密码即可随时无缝重返对局。
+* **🧹 24小时自动清理与回收**：
+  * 系统在读取列表或创建房间时，会自动定期清理创建超过 24 小时的旧房间与完结满 1 小时的历史对局，自动回收自定义房间号，防止僵尸数据。
+* **📱 全端响应式适配**：
+  * 完美适配 PC 桌面大屏（双栏画中画对局）与手机移动端（流式弹性布局、内部独立的聊天与日志滚动面板）。
 
-## 🚀 技术特性
+---
 
-- **Next.js 14**：使用最新的App Router
-- **TypeScript**：完整的类型安全
-- **Tailwind CSS**：现代化的CSS框架
-- **MySQL**：关系型数据库存储
-- **Redis**：缓存和实时通信
-- **Socket.io**：实时双向通信
-- **响应式设计**：支持各种屏幕尺寸
-- **实时更新**：房间状态实时同步
+## 🛠️ 整体技术栈
 
-## 📋 环境要求
+* **核心框架**：Next.js 14 (App Router)
+* **前端视图与动效**：React 18, Tailwind CSS, Framer Motion, Lucide React
+* **后端 API**：Next.js Route Handlers (RESTful 无状态接口)
+* **数据库**：PostgreSQL (配合 `pg` 连接池与 JSONB 二进制大对象存储)
+* **容器化**：Docker (内置轻量级 PostgreSQL 与单镜像部署脚本)
 
-- **Node.js**: 18.0.0 或更高版本
-- **npm**: 8.0.0 或更高版本
-- **MySQL**: 8.0 或更高版本
-- **Redis**: 6.0 或更高版本
+---
 
-## ⚡ 快速开始
+## 🚀 快速开始
 
-### 1. 克隆项目
-```bash
-git clone <repository-url>
-cd DavinciCode
-```
+本项目支持 **Docker 一键镜像启动** 或 **本地开发环境启动**。
 
-### 2. 安装依赖
+### 方式一：Docker 一键部署启动（推荐）
+
+我们提供了一个内置 PostgreSQL 数据库的 Docker 镜像配置，无需手动安装任何外部数据库：
+
+1. **构建 Docker 镜像**：
+   ```bash
+   docker build -t davinci-game .
+   ```
+2. **运行容器**：
+   ```bash
+   docker run -d -p 3000:3000 --name davinci-app davinci-game
+   ```
+3. **访问游戏**：
+   打开浏览器访问 `http://localhost:3000` 即可开始游玩！
+
+---
+
+### 方式二：本地 Node.js 开发环境运行
+
+需准备 [Node.js (18+)](https://nodejs.org) 和运行中的 [PostgreSQL (14+)](https://www.postgresql.org)。
+
+#### 1. 安装项目依赖
 ```bash
 npm install
 ```
 
-### 3. 环境配置
-
-#### 3.1 安装并启动MySQL
-```bash
-# macOS (使用Homebrew)
-brew install mysql
-brew services start mysql
-
-# 设置MySQL root密码
-mysql -u root -p
-ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'root';
-FLUSH PRIVILEGES;
-EXIT;
-```
-
-#### 3.2 安装并启动Redis
-```bash
-# macOS (使用Homebrew)
-brew install redis
-brew services start redis
-```
-
-### 4. 初始化数据库
-```bash
-# 运行数据库初始化脚本
-npm run db:setup
-```
-
-### 5. 配置环境变量（可选）
-项目使用默认配置，可以直接运行。如果需要自定义配置，可以手动创建 `.env.local` 文件：
-
-在项目根目录创建 `.env.local` 文件，内容如下：
-
-```bash
-# 数据库配置（可选，默认使用以下配置）
+#### 2. 配置环境变量
+在根目录创建 `.env.local` 环境变量文件：
+```env
 DB_HOST=localhost
-DB_PORT=3306
+DB_PORT=5432
 DB_USER=root
 DB_PASSWORD=root
 DB_NAME=davinci
-
-# Redis配置（可选，默认使用以下配置）
-REDIS_HOST=localhost
-REDIS_PORT=6379
-
-# 应用配置
-PORT=3000
-NODE_ENV=development
 ```
 
-**默认配置说明**：
-- **MySQL**: localhost:3306, 用户: root, 密码: root, 数据库: davinci
-- **Redis**: localhost:6379
-- **应用端口**: 3000
+#### 3. 运行数据库迁移脚本
+初始化 `davinci` 数据库及所需的物理表结构：
+```bash
+node scripts/setup-pg.js
+```
 
-**注意**: 创建 `.env.local` 为了在需要自定义配置时使用。请用户根据自己的数据库环境修改文件中信息。
-
-### 6. 启动应用
-
-#### 开发模式
+#### 4. 启动开发服务器
 ```bash
 npm run dev
 ```
+启动后访问 `http://localhost:3000`。
 
-#### 生产模式
+#### 5. 生产构建打包
 ```bash
 npm run build
 npm start
 ```
 
-### 7. 访问应用
-- **前端地址**: http://localhost:3000
-- **API接口**: http://localhost:3000/api
-- **Socket.io**: 通过 `/api/socket` 路由提供
+---
 
-## 🔧 开发
+## 🎮 游戏规则与对局流程
 
-```bash
-# 安装依赖
-npm install
-
-# 启动开发服务器
-npm run dev
-
-# 构建生产版本
-npm run build
-
-# 启动生产服务器
-npm start
-
-# 运行数据库初始化
-npm run db:setup
-
-# 环境检查
-npm run check-env
-
-# 代码检查
-npm run lint
-```
-
-## ✅ 待办事项
-
-- [ ] 添加游戏逻辑实现
-- [ ] 实现实时聊天功能
-- [ ] 添加房间设置选项
-- [ ] 优化移动端体验
-- [ ] 添加主题切换功能
-- [ ] 实现用户认证系统
-- [ ] 添加游戏统计功能
-- [ ] 优化数据库性能
-- [ ] 技术栈调整
-  - [x] 前端: Next.js + React
-  - [ ] 数据库: Supabase (PostgreSQL)
-  - [ ] ORM: Supabase Client
-  - [ ] 实时通信: Supabase Realtime
-  - [ ] 认证: Supabase Auth
-  - [ ] 部署: Vercel
-
-## 📄 许可证
-
-本项目采用 MIT 许可证。
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
+1. **创建或加入房间**：
+   * 输入昵称（支持单字母如 `A` 或汉字/英文），创建房间或根据房间号直接加入已有房间。若房间加了密，需输入对应密码。
+2. **等待与开赛**：
+   * 房间内满足 2-4 人时，房主屏幕上方会出现“开赛”按钮，点击即可发起对局。
+3. **回合行动逻辑**：
+   * **摸牌**：轮到行动的玩家首先从黑色或白色牌堆中摸一张牌，牌会自动按数字升序（黑左白右）插入手牌。
+   * **猜牌**：点击任意对手的一张隐藏牌，选择数字（0-11）提交猜测。
+     - **猜对**：对手该牌被公开。可以选择继续猜测别的隐藏牌，或点击 Pass 结束回合。
+     - **猜错**：作为惩罚，自己本轮新摸的牌将被强制向所有人公开，且本轮回合结束。
+   * **认输与出局**：手牌全部公开的玩家宣告出局；玩家亦可主动选择“认输”。生存到最后的唯一玩家获得胜利。
