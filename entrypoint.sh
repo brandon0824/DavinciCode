@@ -5,7 +5,17 @@ set -e
 DB_HOST=${DB_HOST:-${PGHOST:-localhost}}
 
 if [ "$DB_HOST" = "localhost" ] || [ "$DB_HOST" = "127.0.0.1" ]; then
-  echo "🚀 正在启动容器内置 PostgreSQL 服务..."
+  echo "🚀 正在检查并启动容器内置 PostgreSQL 服务..."
+  
+  # Ensure postgres user owns /var/lib/postgresql
+  chown -R postgres:postgres /var/lib/postgresql 2>/dev/null || true
+
+  # If cluster directory is missing or empty, create the cluster automatically
+  if [ ! -d "/var/lib/postgresql/15/main" ] || [ -z "$(ls -A /var/lib/postgresql/15/main 2>/dev/null)" ]; then
+    echo "📝 发现挂载的目录尚未初始化，正在自动创建 PostgreSQL 15 数据库集群..."
+    sudo -u postgres pg_createcluster 15 main || true
+  fi
+
   service postgresql start
 
   echo "⌛ 等待 PostgreSQL 服务启动完成..."
