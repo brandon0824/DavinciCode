@@ -62,6 +62,14 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   const [guessTarget, setGuessTarget] = useState<{ username: string; cardId: string; cardIndex: number; color: 'black' | 'white' } | null>(null);
   const [guessValue, setGuessValue] = useState<string>('');
   const [surrenderModalOpen, setSurrenderModalOpen] = useState(false);
+  const [hasAcknowledgedGameOver, setHasAcknowledgedGameOver] = useState(false);
+
+  // Reset acknowledgment when a fresh game is playing
+  useEffect(() => {
+    if (room?.status === 'playing' && gameState && !gameState.winner && gameState.turnStatus !== 'ended') {
+      setHasAcknowledgedGameOver(false);
+    }
+  }, [room?.status, gameState?.winner, gameState?.turnStatus]);
   
   // User Stats State
   const [userStats, setUserStats] = useState<{ totalGames: number; totalWins: number; totalLosses: number } | null>(null);
@@ -514,8 +522,11 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     );
   }
 
-  // GAME BOARD COMPONENT (Renders only when room is actively playing)
-  if (room?.status === 'playing' && gameState) {
+  // GAME BOARD COMPONENT (Renders during active play OR when game over modal is active prior to acknowledgment)
+  const isGameOver = Boolean(gameState && (gameState.winner || gameState.turnStatus === 'ended'));
+  const shouldShowGameBoard = Boolean(gameState && (room?.status === 'playing' || (isGameOver && !hasAcknowledgedGameOver)));
+
+  if (shouldShowGameBoard && gameState) {
     const isMyTurn = gameState.currentTurn === playerName;
     const myHand = gameState.hands[playerName!] || [];
     const opponents = players.filter(p => p.username !== playerName);
@@ -1004,41 +1015,82 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
         {/* Modal: Game Over Victory / Settlement Dialog */}
         <AnimatePresence>
-          {(gameState.winner || gameState.turnStatus === 'ended') && (
+          {isGameOver && !hasAcknowledgedGameOver && (
             <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
               <motion.div
                 initial={{ opacity: 0, scale: 0.85, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.85, y: 20 }}
                 transition={{ type: 'spring', duration: 0.4, bounce: 0.2 }}
-                className="bg-white dark:bg-slate-900 border-2 border-amber-400 dark:border-amber-500/60 text-slate-800 dark:text-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-5"
+                className="bg-white dark:bg-slate-900 border-2 border-amber-400 dark:border-amber-500/60 text-slate-800 dark:text-white rounded-3xl p-5 sm:p-7 max-w-md w-full shadow-2xl text-center space-y-4"
               >
-                <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-300 text-amber-950 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/30 animate-bounce">
-                  <Trophy className="w-9 h-9" strokeWidth={2.5} />
+                <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-300 text-amber-950 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/30 animate-bounce">
+                  <Trophy className="w-8 h-8" strokeWidth={2.5} />
                 </div>
                 
                 <div>
-                  <h3 className="text-2xl font-black text-slate-900 dark:text-slate-100">
+                  <h3 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100">
                     {gameState.winner === playerName ? '🎉 恭喜您获得最终胜利！' : '🎉 游戏对局已结束！'}
                   </h3>
-                  <p className="text-slate-500 dark:text-slate-400 text-sm mt-2 font-medium">
+                  <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mt-1 font-medium">
                     {gameState.winner === playerName 
                       ? '您成功击败或等候其他所有对手出局，独占鳌头！'
                       : `本局最终获胜玩家为：【${gameState.winner || '未知'}】`}
                   </p>
                 </div>
 
-                <div className="bg-slate-100 dark:bg-slate-950/60 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-mono text-left max-h-28 overflow-y-auto">
+                {/* All Players Final Hands Display */}
+                <div className="bg-slate-50 dark:bg-slate-950/80 p-3 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs text-left space-y-2.5">
+                  <div className="font-bold text-slate-700 dark:text-slate-300 text-xs flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                    <span>📋 各玩家手牌明细 (已全量公开)</span>
+                  </div>
+
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {Object.entries(gameState.hands).map(([uname, hand]) => {
+                      const isWinnerPlayer = uname === gameState.winner;
+                      return (
+                        <div key={uname} className="flex flex-wrap items-center justify-between gap-1.5 py-1.5 border-b border-slate-100 dark:border-slate-800/60 last:border-0">
+                          <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center space-x-1">
+                            <span>{uname}</span>
+                            {isWinnerPlayer && (
+                              <span className="text-amber-600 dark:text-amber-400 font-black text-[10px] bg-amber-100 dark:bg-amber-950/60 px-1.5 py-0.5 rounded-md">
+                                🏆 获胜
+                              </span>
+                            )}
+                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {hand.map((card, idx) => (
+                              <div
+                                key={card.id || idx}
+                                className={`w-7 h-9 rounded-md flex items-center justify-center font-black text-xs border shadow-sm ${
+                                  card.color === 'black'
+                                    ? 'bg-slate-950 text-white border-slate-800'
+                                    : 'bg-white text-slate-950 border-slate-300'
+                                } ${card.value === -1 ? 'text-amber-400 dark:text-amber-300' : ''}`}
+                              >
+                                {getCardDisplayValue(card.value)}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Log summary */}
+                <div className="bg-slate-100 dark:bg-slate-950/60 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-mono text-left max-h-24 overflow-y-auto">
                   {gameState.logs.slice(-3).map((log, i) => (
                     <div key={i} className="text-slate-600 dark:text-slate-300 py-0.5">• {log}</div>
                   ))}
                 </div>
 
                 <Button
-                  onClick={async () => {
-                    await fetchRoomAndPlayers();
+                  onClick={() => {
+                    setHasAcknowledgedGameOver(true);
+                    fetchRoomAndPlayers();
                   }}
-                  className="w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-extrabold text-base py-3 rounded-2xl shadow-lg shadow-amber-500/20 active:scale-[0.96] transition-transform duration-100"
+                  className="w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-extrabold text-sm sm:text-base py-3 rounded-2xl shadow-lg shadow-amber-500/20 active:scale-[0.96] transition-transform duration-100"
                 >
                   返回房间待命 (准备下一局)
                 </Button>

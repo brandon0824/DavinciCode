@@ -1,72 +1,88 @@
-# 达芬奇密码 (Davinci Code) 在线多人桌游
+# DaVinci Code Online Multiplayer Board Game
 
-这是一个支持实时多人的“达芬奇密码”在线桌游系统，采用 Next.js 14 App Router + Tailwind CSS + Framer Motion + PostgreSQL 全栈技术开发，支持本地自建数据库运行，并完美适配 Serverless 部署与 Docker 容器化启动。
+This is a real-time online multiplayer implementation of the classic **DaVinci Code (Coda)** board game, built using **Next.js 14 App Router + Tailwind CSS + Framer Motion + PostgreSQL**. The system supports local development execution, Serverless deployment, and Docker containerized one-click deployment (with host directory volume persistence and embedded lightweight PostgreSQL 15 database).
 
----
-
-## ✨ 系统核心功能与特色
-
-* **🔑 用户账号与加密密码 (Bcrypt Authentication)**：
-  * 支持玩家在线注册与登录账号，采用标准的 `bcryptjs` 加盐哈希加密算法将密码安全保存于 PostgreSQL 数据库中，绝不留存明文密码。
-  * 登录状态自动持久化保存于浏览器 `localStorage`，刷新或重新打开网页无需重复登录。
-* **🏆 个人战绩与胜率自动结算**：
-  * 数据库在 `users` 表中永久保存每位玩家的对战数据（`total_games` 场次, `total_wins` 胜场, `total_losses` 负场）。
-  * 每次对局结束时系统会自动结算所有参赛玩家的胜负并更新至个人账号下，即使 24 小时后房间缓存被清理，个人战绩数据依然**永久保存**，为后续战绩统计页面打下坚实基础。
-* **🎨 现代化 Better-UI 设计**：
-  * 基于 `better-ui` 设计工程规范，支持全局触觉式按压反馈 (`Scale on Press`)、同心圆角 (`Concentric Radius`) 与多层柔和深浅阴影。
-  * 包含黑白牌面的高质感渲染、新摸牌提示、已公开牌角标及优雅的动效库。
-* **🌗 深浅色双主题模式**：
-  * 支持一键切换浅色/深色主题，首次加载自动匹配系统的 `prefers-color-scheme`，并持久化存储用户的个性化选择。
-* **🔒 房间加密防护与全角色重连**：
-  * 创建房间时支持选择设置房间密码，可用房间列表中展示加密 🔒 标识。
-  * 无论是房主还是普通玩家，中途刷新页面或误关浏览器后，只要输入对应用户名和房间密码即可随时无缝重返对局。
-* **🃏 黑白双任意百搭牌 (`-` 牌) 完整规则支持**：
-  * 游戏牌堆包含 **26 张牌**（黑色 0-11 + 1 张黑色 `-` 任意百搭牌，白色 0-11 + 1 张白色 `-` 任意百搭牌）。
-  * 手牌中任意百搭牌展现精致金黄色 `-` 标识，猜牌弹窗内置包含 `- (任意百搭牌)` 的完整决策按键阵列。
-* **🧹 24小时自动清理与回收**：
-  * 系统在读取列表或创建房间时，会自动定期清理创建超过 24 小时的旧房间与完结满 1 小时的历史对局，自动回收自定义房间号。**清理过程绝不影响永久保存的用户账号及战绩数据**。
+Language Options:
+- [English Documentation](README.md)
+- [Chinese Documentation / 中文文档](README_zh.md)
 
 ---
 
-## 🛠️ 整体技术栈
+## ✨ System Features & Highlights
 
-* **核心框架**：Next.js 14 (App Router)
-* **前端视图与动效**：React 18, Tailwind CSS, Framer Motion, Lucide React
-* **后端 API**：Next.js Route Handlers (RESTful 无状态认证与房间 API)
-* **密码加密**：Bcryptjs (加盐哈希算法)
-* **数据库**：PostgreSQL (配合 `pg` 连接池与 JSONB 二进制大对象存储)
-* **容器化**：Docker (内置轻量级 PostgreSQL 与单镜像部署脚本)
+* **🔑 Mandatory User Registration & Secure Authentication (Bcrypt)**:
+  * **Login Gatekeeper**: Users must register or log in to a valid user account before creating or joining any room. Both frontend UI and backend PostgreSQL database strictly enforce user identity verification.
+  * **Password Hashing**: Employs standard `bcryptjs` salted password hashing stored securely inside PostgreSQL. No plain text passwords are ever stored.
+  * **Session Persistence**: User sessions automatically persist in browser `sessionStorage`, avoiding repeated logins on page refresh.
+
+* **🃏 Black & White Wildcard Joker (`-`) Card Rules**:
+  * **26-Card Full Deck**: Contains 12 Black cards (0-11) + 12 White cards (0-11) plus **1 Black Wildcard Joker (`-`)** and **1 White Wildcard Joker (`-`)**.
+  * **Special Visuals & Decision Buttons**: Wildcard Jokers in hand feature golden `-` badges with a `Wildcard` indicator. The guessing dialog includes a dedicated `- (Wildcard Joker)` decision button.
+
+* **🏆 Personal Battle History & Global Leaderboard (`/stats`)**:
+  * Permanently records player statistics (`total_games`, `total_wins`, `total_losses`) in the `users` table and match details in `match_history`.
+  * The `/stats` page showcases "Personal Match History" and "Global Win Rate Leaderboard" (with gold 🥇 styling for rank #1), perfectly responsive on mobile devices.
+
+* **🎉 Settlement Modal with Manual Acknowledgment & Full Hand Disclosure**:
+  * Displays a victory/game over modal revealing **all players' final hand card values and wildcards** upon game completion for full disclosure and review.
+  * Auto-redirect is disabled; players return to the room lobby only when clicking `[Return to Waiting Room (Prepare Next Round)]`.
+
+* **⏰ 30-Second Multiples Inaction Reminder**:
+  * Triggers a timer during active turns. If inaction exceeds 30s, 60s, 90s..., an animated warning toast alerts the player.
+
+* **🎨 Modern Better-UI Design & Dual Theme Modes**:
+  * Built following `better-ui` engineering guidelines with tactile press feedback (`Scale on Press`), concentric radii, soft shadows, and Light/Dark mode toggling.
+  * Fully optimized for mobile screens (iPhone/Android) with zero text wrapping or vertical misalignment.
+
+* **🐳 Docker Deployment & Data Volume Persistence**:
+  * Shell scripts provided: `docker-build.sh` (one-click deployment) and `cleanDBAndRestart.sh` (one-click database wipe & restart).
+  * Host volume directory `/root/davinci_pgdata:/var/lib/postgresql` preserves all user accounts and battle history across container rebuilds.
 
 ---
 
-## 🚀 快速开始
+## 🛠️ Technology Stack
 
-本项目支持 **Docker 一键镜像启动** 或 **本地开发环境启动**。
+* **Core Framework**: Next.js 14 (App Router)
+* **Frontend UI & Animations**: React 18, Tailwind CSS, Framer Motion, Lucide React
+* **Backend API**: Next.js Route Handlers (RESTful APIs)
+* **Encryption**: Bcryptjs (Salted password hashing)
+* **Database**: PostgreSQL (with `pg` connection pool & JSONB data storage)
+* **Containerization**: Docker (Embedded PostgreSQL 15 & automated shell deployment scripts)
 
-### 方式一：Docker 一键部署 Shell 脚本启动（推荐，端口 60824 & 数据持久化保存于 `/root/davinci_pgdata`）
+---
 
-我们提供了一个内置 PostgreSQL 数据库、宿主机数据持久化目录（`/root/davinci_pgdata`）与自动初始化脚本的 Docker 镜像配置：
+## 🚀 Quick Start
 
-1. **一键运行部署脚本**（即使重新打包镜像或更新代码，用户账号与对战历史战绩数据**永久保存于 /root/davinci_pgdata**）：
+Supports **Docker one-click deployment** or **Local Node.js environment**.
+
+### Option 1: Docker One-Click Shell Script Deployment (Recommended, Port 60824 & Persistence at `/root/davinci_pgdata`)
+
+Packaged with Node.js runtime and embedded PostgreSQL database:
+
+1. **Run Deployment Script**:
    ```bash
    chmod +x docker-build.sh && ./docker-build.sh
    ```
-2. **访问游戏**：
-   打开浏览器访问 `http://<服务器IP>:60824` 即可开始游玩！
+2. **Reset/Wipe Database and Re-deploy Script** (Optional):
+   ```bash
+   chmod +x cleanDBAndRestart.sh && ./cleanDBAndRestart.sh
+   ```
+3. **Access Game**:
+   Open browser at `http://<SERVER_IP>:60824` to play!
 
 ---
 
-### 方式二：本地 Node.js 开发环境运行
+### Option 2: Local Node.js Development Environment
 
-需准备 [Node.js (22+)](https://nodejs.org) 和运行中的 [PostgreSQL (14+)](https://www.postgresql.org)。
+Requires [Node.js (22+)](https://nodejs.org) and [PostgreSQL (14+)](https://www.postgresql.org).
 
-#### 1. 安装项目依赖
+#### 1. Install Dependencies
 ```bash
 npm install
 ```
 
-#### 2. 配置环境变量
-在根目录创建 `.env.local` 环境变量文件：
+#### 2. Configure Environment Variables
+Create `.env.local` file in root directory:
 ```env
 DB_HOST=localhost
 DB_PORT=5432
@@ -75,19 +91,18 @@ DB_PASSWORD=root
 DB_NAME=davinci
 ```
 
-#### 3. 运行数据库迁移脚本
-初始化 `davinci` 数据库及所需的 `users` / `rooms` 表结构：
+#### 3. Run Database Setup Script
 ```bash
 node scripts/setup-pg.js
 ```
 
-#### 4. 启动开发服务器
+#### 4. Start Development Server
 ```bash
 npm run dev
 ```
-启动后访问 `http://localhost:3000`。
+Access at `http://localhost:3000` or `http://localhost:60824`.
 
-#### 5. 生产构建打包
+#### 5. Production Build
 ```bash
 npm run build
 npm start
@@ -95,17 +110,19 @@ npm start
 
 ---
 
-## 🎮 游戏规则与对局流程
+## 🎮 Game Rules & Gameplay Flow
 
-1. **注册 / 登录账号**：
-   * 首次进入网页需输入用户名和密码注册或登录，登录后名字自动绑定并支持持久化保持。
-2. **创建或加入房间**：
-   * 创建房间或根据房间号直接加入已有房间。若房间加了密，需输入对应密码。
-3. **等待与开赛**：
-   * 房间内满足 2-4 人时，房主屏幕上方会出现“开赛”按钮，点击即可发起对局。
-4. **回合行动逻辑**：
-   * **摸牌**：轮到行动的玩家首先从黑色或白色牌堆中摸一张牌，牌会自动按数字升序（黑左白右）插入手牌。
-   * **猜牌**：点击任意对手的一张隐藏牌，选择数字（0-11）提交猜测。
-     - **猜对**：对手该牌被公开。可以选择继续猜测别的隐藏牌，或点击 Pass 结束回合。
-     - **猜错**：作为惩罚，自己本轮新摸的牌将被强制向所有人公开，且本轮回合结束。
-   * **认输与出局**：手牌全部公开的玩家宣告出局；玩家亦可主动选择“认输”。生存到最后的唯一玩家获得胜利，结算界面自动累加战绩数据。
+1. **User Registration & Login**:
+   * Players must register or log in on the homepage. Unauthenticated users cannot create or join rooms.
+2. **Create or Join Room**:
+   * Logged-in users can create custom rooms (with optional password protection) or join available rooms in the lobby list.
+3. **Lobby Waiting & Game Start**:
+   * When 2-4 players assemble, the host can click "Start Game" to launch the match.
+4. **Turn Actions**:
+   * **Draw Card**: Draw 1 card from the Black or White deck. Standard cards auto-sort in ascending order (Black left of White). Wildcard Jokers (`-`) are placed on the right.
+   * **Guess Card**: Click an opponent's hidden card and guess its value (`0`-`11` or `- Wildcard Joker`).
+     - **Correct**: Target card is revealed. Player can guess again or pass turn.
+     - **Wrong**: As penalty, player's newly drawn card is forcibly revealed, ending the turn.
+   * **Surrender & Elimination**: Players with all cards revealed are eliminated. The last survivor wins.
+5. **Settlement & Review**:
+   * All players' final hands are disclosed in the game over modal. Click `[Return to Waiting Room (Prepare Next Round)]` to return to the room lobby.
