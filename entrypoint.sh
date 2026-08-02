@@ -10,15 +10,18 @@ if [ "$DB_HOST" = "localhost" ] || [ "$DB_HOST" = "127.0.0.1" ]; then
   # Ensure postgres user owns /var/lib/postgresql
   chown -R postgres:postgres /var/lib/postgresql 2>/dev/null || true
 
-  # If cluster directory is missing or empty, create the cluster automatically
+  # If cluster data directory is missing or empty, recreate configuration and cluster
   if [ ! -d "/var/lib/postgresql/15/main" ] || [ -z "$(ls -A /var/lib/postgresql/15/main 2>/dev/null)" ]; then
-    echo "📝 发现挂载的目录尚未初始化，正在自动创建 PostgreSQL 15 数据库集群..."
-    sudo -u postgres pg_createcluster 15 main || true
+    echo "📝 发现挂载的数据目录尚未初始化，正在为您自动构建全新的 PostgreSQL 15 数据库集群..."
+    pg_dropcluster 15 main 2>/dev/null || true
+    pg_createcluster 15 main
+    chown -R postgres:postgres /var/lib/postgresql
   fi
 
+  echo "⚡ 启动 PostgreSQL 15 服务..."
   service postgresql start
 
-  echo "⌛ 等待 PostgreSQL 服务启动完成..."
+  echo "⌛ 等待 PostgreSQL 服务就绪..."
   until pg_isready -h localhost -p 5432; do
     sleep 1
   done
