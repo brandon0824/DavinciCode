@@ -23,9 +23,10 @@ RUN npm run build
 # Make entrypoint script executable
 RUN chmod +x entrypoint.sh
 
-# Expose Next.js port 60824
+# Expose Next.js port 60824 & PostgreSQL port 5432
 ENV PORT=60824
 EXPOSE 60824
+EXPOSE 5432
 
 # Set entrypoint to manage database startup and Next.js startup
 ENTRYPOINT ["/bin/bash", "./entrypoint.sh"]

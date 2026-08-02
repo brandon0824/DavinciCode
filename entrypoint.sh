@@ -18,16 +18,24 @@ if [ "$DB_HOST" = "localhost" ] || [ "$DB_HOST" = "127.0.0.1" ]; then
     chown -R postgres:postgres /var/lib/postgresql
   fi
 
-  echo "🌐 开启 PostgreSQL 外网远程监听与关闭强制 SSL (listen_addresses = '*', ssl = off)..."
-  sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" /etc/postgresql/15/main/postgresql.conf 2>/dev/null || true
-  sed -i "s/listen_addresses = 'localhost'/listen_addresses = '*'/g" /etc/postgresql/15/main/postgresql.conf 2>/dev/null || true
-  sed -i "s/ssl = on/ssl = off/g" /etc/postgresql/15/main/postgresql.conf 2>/dev/null || true
-  
-  grep -q "listen_addresses = '*'" /etc/postgresql/15/main/postgresql.conf || echo "listen_addresses = '*'" >> /etc/postgresql/15/main/postgresql.conf 2>/dev/null || true
-  grep -q "0.0.0.0/0" /etc/postgresql/15/main/pg_hba.conf || echo "host all all 0.0.0.0/0 md5" >> /etc/postgresql/15/main/pg_hba.conf 2>/dev/null || true
+  echo "🌐 配置 PostgreSQL 允许外网远程 IP 访问 (listen_addresses = '*', ssl = off)..."
+  PG_CONF="/etc/postgresql/15/main/postgresql.conf"
+  PG_HBA="/etc/postgresql/15/main/pg_hba.conf"
 
-  echo "⚡ 启动 PostgreSQL 15 服务..."
-  service postgresql start
+  if [ -f "$PG_CONF" ]; then
+    sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" "$PG_CONF" 2>/dev/null || true
+    sed -i "s/listen_addresses = 'localhost'/listen_addresses = '*'/g" "$PG_CONF" 2>/dev/null || true
+    sed -i "s/ssl = on/ssl = off/g" "$PG_CONF" 2>/dev/null || true
+    grep -q "listen_addresses = '*'" "$PG_CONF" || echo "listen_addresses = '*'" >> "$PG_CONF" 2>/dev/null || true
+  fi
+
+  if [ -f "$PG_HBA" ]; then
+    grep -q "0.0.0.0/0" "$PG_HBA" || echo "host all all 0.0.0.0/0 md5" >> "$PG_HBA" 2>/dev/null || true
+    grep -q "0.0.0.0/0" "$PG_HBA" || echo "host all all 0.0.0.0/0 trust" >> "$PG_HBA" 2>/dev/null || true
+  fi
+
+  echo "⚡ 启动/重启 PostgreSQL 15 服务..."
+  service postgresql restart || service postgresql start
 
   echo "⌛ 等待 PostgreSQL 服务就绪..."
   until pg_isready -h localhost -p 5432; do
