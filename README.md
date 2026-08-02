@@ -40,23 +40,15 @@
 
 本项目支持 **Docker 一键镜像启动** 或 **本地开发环境启动**。
 
-### 方式一：Docker 一键部署启动（推荐，端口 60824）
+### 方式一：Docker 一键部署 Shell 脚本启动（推荐，端口 60824 & 数据持久化保存于 `/root/davinci_pgdata`）
 
-我们提供了一个内置 PostgreSQL 数据库与自动初始化脚本的 Docker 镜像配置，无需手动安装任何外部数据库：
+我们提供了一个内置 PostgreSQL 数据库、宿主机数据持久化目录（`/root/davinci_pgdata`）与自动初始化脚本的 Docker 镜像配置：
 
-1. **构建 Docker 镜像**：
+1. **一键运行部署脚本**（即使重新打包镜像或更新代码，用户账号与对战历史战绩数据**永久保存于 /root/davinci_pgdata**）：
    ```bash
-   docker build -t davinci-code:latest .
+   chmod +x docker-build.sh && ./docker-build.sh
    ```
-2. **运行容器 (端口 60824)**：
-   ```bash
-   docker run -d -p 60824:60824 --name davinci-game --restart=always davinci-code:latest
-   ```
-3. **查看启动与建表日志**：
-   ```bash
-   docker logs -f davinci-game
-   ```
-4. **访问游戏**：
+2. **访问游戏**：
    打开浏览器访问 `http://<服务器IP>:60824` 即可开始游玩！
 
 ---

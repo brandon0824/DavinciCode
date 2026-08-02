@@ -1,5 +1,0 @@
-docker build -t davinci-code:latest .
-
-docker run -d -p 60824:60824 --name davinci-game --restart=always davinci-code:latest
-
-docker logs -f davinci-game
