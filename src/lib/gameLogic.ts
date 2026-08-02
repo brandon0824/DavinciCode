@@ -1,7 +1,8 @@
 export interface Card {
-  id: string; // unique card id, e.g., 'black-5', 'white-5'
+  id: string; // unique card id, e.g., 'black-5', 'white-5', 'black-joker', 'white-joker'
   color: 'black' | 'white';
-  value: number; // 0 to 11
+  value: number; // 0 to 11, or -1 for Joker (-)
+  isJoker?: boolean; // true if this is a Wildcard Joker (-)
   isRevealed: boolean;
   owner: string | null;
 }
@@ -16,12 +17,18 @@ export interface GameData {
   logs: string[];
 }
 
-// Generate the initial set of 24 cards (0-11 Black, 0-11 White)
+// Display helper for card value: -1 is displayed as '-', otherwise number string
+export function getCardDisplayValue(value: number): string {
+  return value === -1 ? '-' : String(value);
+}
+
+// Generate the initial set of 26 cards (0-11 Black + Black Joker (-), 0-11 White + White Joker (-))
 export function generateCards(): Card[] {
   const cards: Card[] = [];
   const colors: ('black' | 'white')[] = ['black', 'white'];
   
   for (const color of colors) {
+    // Standard cards 0 to 11
     for (let value = 0; value <= 11; value++) {
       cards.push({
         id: `${color}-${value}`,
@@ -31,6 +38,15 @@ export function generateCards(): Card[] {
         owner: null,
       });
     }
+    // Wildcard Joker (-)
+    cards.push({
+      id: `${color}-joker`,
+      color,
+      value: -1,
+      isJoker: true,
+      isRevealed: false,
+      owner: null,
+    });
   }
   
   return cards;
@@ -47,14 +63,19 @@ export function shuffleCards(cards: Card[]): Card[] {
 }
 
 // Sort cards in hand: Left to right from smallest to largest
-// Rule: Same numbers -> Black is placed on the left (smaller), White on the right (larger)
+// Rule: Normal cards (0-11) sort from smallest to largest; Black left of White on tie.
+// Joker cards (-) are placed at the end (right side) of the hand.
 export function sortCards(cards: Card[]): Card[] {
-  return [...cards].sort((a, b) => {
+  const normalCards = cards.filter(c => c.value !== -1).sort((a, b) => {
     if (a.value !== b.value) {
       return a.value - b.value;
     }
     return a.color === 'black' ? -1 : 1;
   });
+
+  const jokerCards = cards.filter(c => c.value === -1);
+
+  return [...normalCards, ...jokerCards];
 }
 
 // Initialize and deal cards to players
@@ -98,6 +119,6 @@ export function initGame(usernames: string[]): GameData {
     turnStatus: 'drawing',
     lastDrawnCard: null,
     winner: null,
-    logs: ['游戏开始！'],
+    logs: ['游戏开始！包含了黑白两张【-】任意百搭牌。'],
   };
 }

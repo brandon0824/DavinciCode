@@ -7,7 +7,7 @@ import { ArrowLeft, Play, LogOut, Users, Crown, User, Send, AlertCircle, HelpCir
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { GameData, Card as GameCard, sortCards } from '@/lib/gameLogic';
+import { GameData, Card as GameCard, sortCards, getCardDisplayValue } from '@/lib/gameLogic';
 import { useTheme } from '@/lib/useTheme';
 
 interface Player {
@@ -340,7 +340,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
     const targetUser = guessTarget.username;
     const cardIdx = guessTarget.cardIndex;
-    const guessVal = parseInt(guessValue, 10);
+    const guessVal = guessValue === '-' ? -1 : parseInt(guessValue, 10);
 
     const updatedHands = JSON.parse(JSON.stringify(gameState.hands));
     const targetCard: GameCard = updatedHands[targetUser][cardIdx];
@@ -353,10 +353,12 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     let winner = gameState.winner;
     let lastDrawn = gameState.lastDrawnCard;
 
+    const displayValStr = guessVal === -1 ? '任意百搭牌 [-]' : `[${guessVal}]`;
+
     if (isCorrect) {
       targetCard.isRevealed = true;
       updatedHands[targetUser][cardIdx] = targetCard;
-      newLogs.push(`${playerName} 猜对了 ${targetUser} 的第 ${cardIdx + 1} 张牌，数值确实是 [${guessVal}]！`);
+      newLogs.push(`${playerName} 猜对了 ${targetUser} 的第 ${cardIdx + 1} 张牌，数值确实是 ${displayValStr}！`);
 
       const activePlayers = getActivePlayers(updatedHands);
       if (activePlayers.length === 1) {
@@ -368,21 +370,23 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
         lastDrawn = null; 
       }
     } else {
-      newLogs.push(`${playerName} 猜测 ${targetUser} 的牌是 [${guessVal}]，但是猜错了！`);
+      newLogs.push(`${playerName} 猜测 ${targetUser} 的牌是 ${displayValStr}，但是猜错了！`);
       
       if (lastDrawn) {
         const myHand: GameCard[] = updatedHands[playerName];
         const drawnInHandIdx = myHand.findIndex(c => c.id === lastDrawn!.id);
         if (drawnInHandIdx !== -1) {
           myHand[drawnInHandIdx].isRevealed = true;
-          newLogs.push(`${playerName} 必须公开自己本轮摸的牌 [${lastDrawn.value}]。`);
+          const drawnValStr = lastDrawn.value === -1 ? '任意百搭牌 [-]' : `[${lastDrawn.value}]`;
+          newLogs.push(`${playerName} 必须公开自己本轮摸的牌 ${drawnValStr}。`);
         }
       } else {
         const myHand: GameCard[] = updatedHands[playerName];
         const unrevealedIdx = myHand.findIndex(c => !c.isRevealed);
         if (unrevealedIdx !== -1) {
           myHand[unrevealedIdx].isRevealed = true;
-          newLogs.push(`${playerName} 惩罚性公开了自己的第 ${unrevealedIdx + 1} 张牌：[${myHand[unrevealedIdx].value}]。`);
+          const penaltyValStr = myHand[unrevealedIdx].value === -1 ? '任意百搭牌 [-]' : `[${myHand[unrevealedIdx].value}]`;
+          newLogs.push(`${playerName} 惩罚性公开了自己的第 ${unrevealedIdx + 1} 张牌：${penaltyValStr}。`);
         }
       }
 
@@ -708,7 +712,9 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                                 } ${showGuessAction ? 'hover:scale-105 hover:border-cyan-500 shadow-md ring-2 ring-cyan-500/50' : ''}`}
                               >
                                 {card.isRevealed ? (
-                                  <span className="text-2xl sm:text-3xl font-black">{card.value}</span>
+                                  <span className={`text-2xl sm:text-3xl font-black ${card.value === -1 ? 'text-amber-400 dark:text-amber-300' : ''}`}>
+                                    {getCardDisplayValue(card.value)}
+                                  </span>
                                 ) : (
                                   <div className="flex flex-col items-center justify-center p-1 text-center">
                                     <HelpCircle className={`w-5 h-5 sm:w-6 sm:h-6 ${card.color === 'black' ? 'text-slate-400' : 'text-slate-500'}`} strokeWidth={2.5} />
@@ -807,7 +813,15 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                         </span>
                       )}
                       
-                      <span className="text-2xl sm:text-3xl">{card.value}</span>
+                      {card.value === -1 && !isNew && (
+                        <span className="absolute -top-2 bg-amber-400 text-amber-950 text-[8px] px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider shadow-sm">
+                          百搭
+                        </span>
+                      )}
+
+                      <span className={`text-2xl sm:text-3xl font-black ${card.value === -1 ? 'text-amber-400 dark:text-amber-300' : ''}`}>
+                        {getCardDisplayValue(card.value)}
+                      </span>
                       
                       {card.isRevealed && (
                         <div className="absolute -bottom-2 bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400 text-[8px] px-1.5 py-0.5 rounded-full font-bold border border-red-200 dark:border-red-900/50">
@@ -890,17 +904,17 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                     <span>⏰ 您已思考超过 {Math.floor(turnSeconds / 30) * 30} 秒，请尽快做出选择！</span>
                   </div>
                 )}
-                <p className="text-slate-500 dark:text-slate-400 mb-4 text-xs">
-                  猜测其从左数第 <span className="text-cyan-600 dark:text-cyan-400 font-extrabold">{guessTarget.cardIndex + 1}</span> 张 {guessTarget.color === 'black' ? '黑色' : '白色'} 牌的数字值（0 - 11）：
+                <p className="text-slate-500 dark:text-slate-400 mb-4 text-xs leading-relaxed">
+                  猜测其从左数第 <span className="text-cyan-600 dark:text-cyan-400 font-extrabold">{guessTarget.cardIndex + 1}</span> 张 {guessTarget.color === 'black' ? '黑色' : '白色'} 牌的数值（数字 0-11 或任意百搭牌 [-]）：
                 </p>
                 
-                <div className="grid grid-cols-4 gap-2 mb-6">
+                <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 mb-6">
                   {Array.from({ length: 12 }, (_, i) => (
                     <button
                       key={i}
                       type="button"
                       onClick={() => setGuessValue(i.toString())}
-                      className={`py-3 rounded-xl font-black border transition-transform duration-100 active:scale-[0.96] text-base ${
+                      className={`py-2.5 rounded-xl font-black border transition-transform duration-100 active:scale-[0.96] text-base ${
                         guessValue === i.toString()
                           ? 'bg-cyan-500 text-slate-950 border-cyan-500 shadow-md scale-105 font-black'
                           : 'bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
@@ -909,6 +923,18 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                       {i}
                     </button>
                   ))}
+
+                  <button
+                    type="button"
+                    onClick={() => setGuessValue('-')}
+                    className={`py-2.5 rounded-xl font-black border transition-transform duration-100 active:scale-[0.96] text-sm col-span-4 sm:col-span-3 ${
+                      guessValue === '-'
+                        ? 'bg-amber-400 text-amber-950 border-amber-400 shadow-md scale-105 font-black'
+                        : 'bg-amber-100 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-200'
+                    }`}
+                  >
+                    - (任意百搭牌)
+                  </button>
                 </div>
                 
                 <div className="flex space-x-3">
