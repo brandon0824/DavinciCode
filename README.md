@@ -63,7 +63,7 @@
 
 ### 方式二：本地 Node.js 开发环境运行
 
-需准备 [Node.js (18+)](https://nodejs.org) 和运行中的 [PostgreSQL (14+)](https://www.postgresql.org)。
+需准备 [Node.js (22+)](https://nodejs.org) 和运行中的 [PostgreSQL (14+)](https://www.postgresql.org)。
 
 #### 1. 安装项目依赖
 ```bash

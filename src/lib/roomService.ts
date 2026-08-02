@@ -183,6 +183,7 @@ export async function joinRoom(data: JoinRoomData): Promise<boolean> {
 
 // Leave a room
 export async function leaveRoom(roomId: string, username: string): Promise<boolean> {
+  const room = await getRoom(roomId);
   const players = await getRoomPlayers(roomId);
   const playerLeaving = players.find(p => p.username === username);
   if (!playerLeaving) return false;
@@ -195,12 +196,55 @@ export async function leaveRoom(roomId: string, username: string): Promise<boole
   const remainingPlayers = players.filter(p => p.username !== username);
   if (remainingPlayers.length === 0) {
     await deleteRoom(roomId);
-  } else if (playerLeaving.isHost) {
+    return true;
+  }
+  
+  if (playerLeaving.isHost) {
     const nextHost = remainingPlayers[0];
     await pgPool.query(
       'UPDATE room_players SET is_host = true WHERE room_id = $1 AND username = $2',
       [roomId, nextHost.username]
     );
+  }
+
+  // 若退出时房间正在进行游戏，自动更新局内状态并检查胜负
+  if (room && room.status === 'playing') {
+    const gameData = await getGameState(roomId);
+    if (gameData && gameData.hands) {
+      // 强制公开退出玩家的所有手牌
+      const userHand = gameData.hands[username] || [];
+      userHand.forEach((card: any) => { card.isRevealed = true; });
+      gameData.hands[username] = userHand;
+
+      if (!gameData.logs) gameData.logs = [];
+      gameData.logs.push(`🚪 玩家 ${username} 中途退出了房间，手牌已强制公开。`);
+
+      // 统计剩余在线且手牌未全部被猜出的活牌玩家
+      const remainingUsernames = remainingPlayers.map(p => p.username);
+      const activeSurvivors = remainingUsernames.filter(user => {
+        const h = gameData.hands[user] || [];
+        return h.some((c: any) => !c.isRevealed);
+      });
+
+      if (activeSurvivors.length === 1) {
+        const winner = activeSurvivors[0];
+        gameData.winner = winner;
+        gameData.turnStatus = 'ended';
+        gameData.logs.push(`🎉 由于其他玩家已全部退出或出局，恭喜 ${winner} 获得了最后的胜利！`);
+        await updateGameState(roomId, gameData.currentTurn, gameData);
+        await endGame(roomId, winner);
+      } else if (gameData.currentTurn === username && remainingUsernames.length > 0) {
+        // 如果离开者正好是当前轮到的人，切换到下一个存活玩家
+        const nextUser = activeSurvivors[0] || remainingUsernames[0];
+        gameData.currentTurn = nextUser;
+        gameData.turnStatus = 'drawing';
+        gameData.lastDrawnCard = null;
+        gameData.logs.push(`由于 ${username} 退出，回合自动切换至 ${nextUser}。`);
+        await updateGameState(roomId, gameData.currentTurn, gameData);
+      } else {
+        await updateGameState(roomId, gameData.currentTurn, gameData);
+      }
+    }
   }
   
   console.log(`✅ 用户 ${username} 离开房间 ${roomId}`);

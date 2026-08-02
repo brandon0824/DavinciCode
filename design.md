@@ -52,7 +52,7 @@
   * **Fetch API Polling**：通过浏览器原生 API 周期性轮询（大厅 3s，游戏房 1.5s）后端轻量路由，拉取和保存最新状态。
 
 ### 2. 后端接口层 (Server-side / Backend)
-* **运行环境**：Node.js 运行时 (端口: 60824)。
+* **运行环境**：Node.js 22 运行时 (端口: 60824)。
 * **主要技术**：
   * **Next.js Route Handlers**：基于 Next.js App Router 的 RESTful API 路由。处理注册、登录、房间管理、战绩查询与游戏对局指令。
   * **bcryptjs**：加盐哈希密码加密库。服务端在处理注册与登录时，对用户密码进行 10 轮加盐单向哈希处理。

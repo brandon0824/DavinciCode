@@ -1,4 +1,4 @@
-FROM node:18-bullseye
+FROM node:22-bookworm
 
 # Install PostgreSQL, postgresql-contrib, and sudo
 RUN apt-get update && \
@@ -12,7 +12,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install project dependencies
-RUN npm ci
+RUN npm install
 
 # Copy project files
 COPY . .

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Play, LogOut, Users, Crown, User, Send, AlertCircle, HelpCircle, Sun, Moon, Lock, Flag, Sparkles, Clock } from 'lucide-react';
+import { ArrowLeft, Play, LogOut, Users, Crown, User, Send, AlertCircle, HelpCircle, Sun, Moon, Lock, Flag, Sparkles, Clock, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -975,6 +975,51 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
             </div>
           )}
         </AnimatePresence>
+
+        {/* Modal: Game Over Victory / Settlement Dialog */}
+        <AnimatePresence>
+          {(gameState.winner || gameState.turnStatus === 'ended') && (
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.85, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.85, y: 20 }}
+                transition={{ type: 'spring', duration: 0.4, bounce: 0.2 }}
+                className="bg-white dark:bg-slate-900 border-2 border-amber-400 dark:border-amber-500/60 text-slate-800 dark:text-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-5"
+              >
+                <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-300 text-amber-950 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/30 animate-bounce">
+                  <Trophy className="w-9 h-9" strokeWidth={2.5} />
+                </div>
+                
+                <div>
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-slate-100">
+                    {gameState.winner === playerName ? '🎉 恭喜您获得最终胜利！' : '🎉 游戏对局已结束！'}
+                  </h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm mt-2 font-medium">
+                    {gameState.winner === playerName 
+                      ? '您成功击败或等候其他所有对手出局，独占鳌头！'
+                      : `本局最终获胜玩家为：【${gameState.winner || '未知'}】`}
+                  </p>
+                </div>
+
+                <div className="bg-slate-100 dark:bg-slate-950/60 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs font-mono text-left max-h-28 overflow-y-auto">
+                  {gameState.logs.slice(-3).map((log, i) => (
+                    <div key={i} className="text-slate-600 dark:text-slate-300 py-0.5">• {log}</div>
+                  ))}
+                </div>
+
+                <Button
+                  onClick={async () => {
+                    await fetchRoomAndPlayers();
+                  }}
+                  className="w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-extrabold text-base py-3 rounded-2xl shadow-lg shadow-amber-500/20 active:scale-[0.96] transition-transform duration-100"
+                >
+                  返回房间待命 (准备下一局)
+                </Button>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
@@ -1078,6 +1123,32 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                 分享房间号给朋友，当人数不少于 2 人时，房主即可点击上方“开赛”启动对局
               </p>
             </div>
+
+            {/* Last Game Result Banner */}
+            {gameState?.winner && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-gradient-to-r from-amber-500/10 via-yellow-500/10 to-amber-500/10 border border-amber-300 dark:border-amber-700/60 rounded-2xl p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm"
+              >
+                <div className="flex items-center space-x-3 text-left">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                    <Trophy className="w-5 h-5 animate-pulse" strokeWidth={2.5} />
+                  </div>
+                  <div>
+                    <div className="text-sm font-extrabold text-slate-800 dark:text-slate-200">
+                      上一局获胜者：<span className="text-amber-600 dark:text-amber-400 font-black text-base">{gameState.winner}</span> 🏆
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      同房间所有玩家已自动返回房间待命，房主点击【开赛】即可直接开始下一局对决
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs text-amber-700 dark:text-amber-300 font-bold bg-amber-100 dark:bg-amber-950/60 px-3 py-1 rounded-full border border-amber-200 dark:border-amber-800/80 whitespace-nowrap shrink-0">
+                  战绩已自动记录
+                </span>
+              </motion.div>
+            )}
 
             {/* Host-Only Full Room (4 Players) Game Ready Notification Banner */}
             {currentPlayer?.isHost && players.length >= (room?.maxPlayers || 4) && (
