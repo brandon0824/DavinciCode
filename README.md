@@ -38,6 +38,9 @@ Language Options:
   * Shell scripts provided: `docker-build.sh` (one-click deployment) and `cleanDBAndRestart.sh` (one-click database wipe & restart).
   * Host volume directory `/root/davinci_pgdata:/var/lib/postgresql` preserves all user accounts and battle history across container rebuilds.
 
+* **🌐 Direct External Database Connection Support**:
+  * Automatically exposes PostgreSQL port `5432` and enables `listen_addresses = '*'`, allowing direct external management via Navicat, DBeaver, DataGrip, or pgAdmin.
+
 ---
 
 ## 🛠️ Technology Stack
@@ -48,6 +51,18 @@ Language Options:
 * **Encryption**: Bcryptjs (Salted password hashing)
 * **Database**: PostgreSQL (with `pg` connection pool & JSONB data storage)
 * **Containerization**: Docker (Embedded PostgreSQL 15 & automated shell deployment scripts)
+
+---
+
+## 🔌 External Database Connection Info (Navicat / DBeaver / DataGrip)
+
+After allowing inbound TCP port `5432` in your server firewall / cloud security group:
+
+- **Host**: Your Linux server's public IPv4 address
+- **Port**: `5432`
+- **Database**: `davinci`
+- **Username**: `root`
+- **Password**: `Shithappen0824`
 
 ---
 

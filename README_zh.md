@@ -38,6 +38,9 @@ Language / 语言选择:
   * 提供 `docker-build.sh`（一键打包部署）与 `cleanDBAndRestart.sh`（一键清空数据重置）Shell 脚本；
   * 挂载宿主机目录 `/root/davinci_pgdata:/var/lib/postgresql`，即使重新打包镜像或更新代码，用户账号与对战历史战绩数据**永久保存**。
 
+* **🌐 外网远程数据库直连支持**：
+  * 自动开放 PostgreSQL `5432` 端口与 `listen_addresses = '*'`，支持通过 Navicat / DBeaver / DataGrip 等外网数据库工具直连。
+
 ---
 
 ## 🛠️ 整体技术栈
@@ -48,6 +51,18 @@ Language / 语言选择:
 * **密码加密**：Bcryptjs (加盐哈希算法)
 * **数据库**：PostgreSQL (配合 `pg` 连接池与 JSONB 二进制大对象存储)
 * **容器化**：Docker (内置 PostgreSQL 15 与自动化 Shell 部署脚本)
+
+---
+
+## 🔌 数据库外网直连信息 (Navicat / DBeaver / DataGrip)
+
+在服务器开放安全组 `5432` 端口后，可通过以下信息直接连接容器内的数据库：
+
+- **主机名/IP (Host)**: 你的 Linux 服务器外网 IPv4 地址
+- **端口 (Port)**: `5432`
+- **初始数据库 (Database)**: `davinci`
+- **用户名 (Username)**: `root`
+- **密码 (Password)**: `Shithappen0824`
 
 ---
 

@@ -4,7 +4,7 @@ async function setupDatabase() {
   const host = process.env.DB_HOST || process.env.PGHOST || 'localhost';
   const port = parseInt(process.env.DB_PORT || process.env.PGPORT || '5432', 10);
   const user = process.env.DB_USER || process.env.PGUSER || 'root';
-  const password = process.env.DB_PASSWORD || process.env.PGPASSWORD || 'root';
+  const password = process.env.DB_PASSWORD || process.env.PGPASSWORD || 'Shithappen0824';
   const dbName = process.env.DB_NAME || process.env.PGDATABASE || 'davinci';
 
   // Connection to default 'postgres' database to create the new database

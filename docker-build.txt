@@ -1,0 +1,11 @@
+# Linux 环境一键部署命令 (包含 Web 端口 60824, PG外网端口 5432 与数据持久化挂载 -v /root/davinci_pgdata:/var/lib/postgresql)
+# 方式一：直接运行自动部署 Shell 脚本 (推荐)
+chmod +x docker-build.sh && ./docker-build.sh
+
+# 方式二：手动分步执行命令
+docker stop davinci-game 2>/dev/null || true
+docker rm davinci-game 2>/dev/null || true
+docker rmi davinci-code:latest 2>/dev/null || true
+docker build -t davinci-code:latest .
+docker run -d -p 60824:60824 -p 5432:5432 -v /root/davinci_pgdata:/var/lib/postgresql --name davinci-game --restart=always davinci-code:latest
+docker logs -f davinci-game
