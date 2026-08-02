@@ -1,58 +1,61 @@
 # 达芬奇密码 (Davinci Code) 桌游项目系统架构与设计文档
 
-本文档详细说明了“达芬奇密码”多人在线桌游的架构设计、技术选型以及核心模块实现方式。
+本文档详细说明了“达芬奇密码”多人在线桌游的架构设计、技术选型、数据库 Schema 以及核心模块实现方式。
 
 ---
 
 ## 🏗️ 整体技术架构
 
-本项目采用 **Serverless 友好** 且 **高度自闭环** 的全栈架构设计。前端页面与后端 API 路由均在 Next.js 14 (App Router) 框架内实现，数据持久化保存在 PostgreSQL 关系型数据库中，用户密码使用 Bcrypt 加盐哈希加密。
+本项目采用 **Serverless 友好** 且 **高度自闭环** 的全栈架构设计。前端页面与后端 API 路由均在 Next.js 14 (App Router) 框架内实现，数据持久化保存在 PostgreSQL 关系型数据库中，用户密码使用 Bcrypt 加盐哈希加密。系统可通过 Docker 容器化并映射 **60824** 端口轻松部署到 Linux 服务器。
 
 ```
-+--------------------------------------------------------------+
-|                        浏览器 (Client)                       |
++----------------------------------------------------------------+
+|                          浏览器 (Client)                       |
 |   - 表现层: React 18 / Tailwind CSS / Framer Motion            |
-|   - 认证层: localStorage (持久化会话) / 战绩胜率概览            |
+|   - 页面集: 登录注册 / 游戏大厅 / 房间面板 / 战绩排行榜 (/stats) |
+|   - 认证层: localStorage (持久化会话) / 顶部战绩 Badge          |
 |   - 数据同步: HTTP Polling (数据驱动短轮询)                     |
-+--------------------------------------------------------------+
++----------------------------------------------------------------+
                                |
-                               | HTTP (JSON API)
+                               | HTTP (JSON API, 端口: 60824)
                                v
-+--------------------------------------------------------------+
-|                     Next.js Full-Stack App                   |
-|   - 认证路由: api/auth/register / api/auth/login (Bcrypt)    |
-|   - 逻辑服务层: authService.ts / roomService.ts / gameLogic.ts|
-+--------------------------------------------------------------+
++----------------------------------------------------------------+
+|                     Next.js Full-Stack App                     |
+|   - 认证路由: api/auth/register / api/auth/login (Bcrypt)      |
+|   - 战绩路由: api/stats (对局历史与全服胜率排行榜)             |
+|   - 逻辑服务: authService.ts / roomService.ts / gameLogic.ts  |
++----------------------------------------------------------------+
                                |
                                | SQL / TCP
                                v
-+--------------------------------------------------------------+
-|                     PostgreSQL 数据库                         |
-|   - 永久数据表: users (密码哈希、累计场次、胜负战绩)          |
-|   - 临时房间表: rooms / room_players / game_states            |
-+--------------------------------------------------------------+
++----------------------------------------------------------------+
+|                     PostgreSQL 数据库                           |
+|   - 永久数据表: users (密码哈希、胜负战绩)                     |
+|   - 明细数据表: match_history (单场对局胜负记录与时间)         |
+|   - 临时房间表: rooms / room_players / game_states              |
++----------------------------------------------------------------+
 ```
 
 ---
 
 ## 💻 前后端技术职责拆分
 
-本项目的开发和部署模式实现了代码的单体集成，但在逻辑架构上遵循清晰的前后端分离职责：
+本项目在逻辑架构上遵循清晰的前后端分离职责：
 
 ### 1. 前端表现层 (Client-side / Frontend)
-* **运行环境**：用户的 Web 浏览器。
+* **运行环境**：用户的 Web 浏览器 (完美适配桌面端与移动端 iPhone/Android)。
 * **主要技术**：
-  * **React 18**：核心 UI 视图层。采用声明式组件开发，独立渲染账号登录注册、大厅、等待房间和对局棋盘桌面。
-  * **Tailwind CSS**：原子化 CSS 框架。用于高效定制暗黑风面板、毛玻璃背景（backdrop-blur）和精细的间距与色彩规范。
-  * **Framer Motion**：轻量级 React 动效库。专用于实现手牌排序滑入、摸牌高亮以及猜牌弹窗等核心卡牌动效。
-  * **Lucide React**：轻量 SVG 图标集。提供页面上所需的各类指示图标（如 Crown、Users、Lock、Flag、UserCheck 等）。
+  * **React 18**：核心 UI 视图层。采用声明式组件开发，渲染账号登录注册、大厅、等待房间、对局棋盘与个人战绩榜。
+  * **Tailwind CSS**：原子化 CSS 框架。用于高效定制暗黑风面板、毛玻璃背景（backdrop-blur）与移动端响应式防折行规则 (`whitespace-nowrap`)。
+  * **Framer Motion**：轻量级 React 动效库。专用于实现手牌排序滑入、摸牌高亮、猜牌弹窗以及超时浮动 Toast 提醒。
+  * **Lucide React**：轻量 SVG 图标集。提供页面上所需的各类指示图标（如 Crown, Users, Lock, Flag, Trophy, CheckCircle2, XCircle 等）。
   * **Fetch API Polling**：通过浏览器原生 API 周期性轮询（大厅 3s，游戏房 1.5s）后端轻量路由，拉取和保存最新状态。
 
 ### 2. 后端接口层 (Server-side / Backend)
-* **运行环境**：Node.js 运行时或 Edge/Serverless 函数计算环境。
+* **运行环境**：Node.js 运行时 (端口: 60824)。
 * **主要技术**：
-  * **Next.js Route Handlers**：基于 Next.js App Router 的 RESTful API 路由。处理注册、登录、房间管理与游戏对局指令。
-  * **bcryptjs**：加盐哈希密码加密库。服务端在处理注册与登录时，对用户密码进行可控强度的单向哈希处理。
+  * **Next.js Route Handlers**：基于 Next.js App Router 的 RESTful API 路由。处理注册、登录、房间管理、战绩查询与游戏对局指令。
+  * **bcryptjs**：加盐哈希密码加密库。服务端在处理注册与登录时，对用户密码进行 10 轮加盐单向哈希处理。
   * **node-postgres (`pg`)**：PostgreSQL 原生 Node.js 客户端。基于 `Pool` 连接池管理与物理数据库的高并发连接。
   * **TypeScript**：全系统静态强类型检验。保障从认证逻辑到游戏棋桌运算的全面类型安全。
 
@@ -60,6 +63,7 @@
 * **运行环境**：物理安装或容器部署的 PostgreSQL 关系型数据库。
 * **主要技术**：
   * **永久数据表 (`users`)**：保存玩家账号、Bcrypt 加密密码及个人战绩数据（`total_games`, `total_wins`, `total_losses`），永久有效。
+  * **对局明细表 (`match_history`)**：记录每一场对局的场次编号、胜负状态、实时胜率与开赛时间，供 `/stats` 战绩榜展现。
   * **临时关系模型 (`rooms` / `room_players`)**：维护实时在线房间和入房成员。
   * **JSONB 二进制大对象 (`game_states`)**：在 `game_states` 表中以 JSONB 原子化存取卡牌布局与对局日志。
 
@@ -77,7 +81,16 @@
 * `total_losses` (INT): 累计负场（默认 0）。
 * `created_at` / `last_login_at`: 注册与最后登录时间。
 
-### 1. 房间表 (`rooms`) —— 24小时自动清理
+### 1. 战绩历史明细表 (`match_history`) —— 永久保留
+存储所有完成对局的玩家对战记录：
+* `id` (SERIAL, PK): 自增主键。
+* `room_id` (VARCHAR): 关联房间号。
+* `username` (VARCHAR): 玩家用户名。
+* `is_winner` (BOOLEAN): 该场对局是否胜利 (`true` = 胜利 🏆, `false` = 失败 ❌)。
+* `started_at` (TIMESTAMP): 游戏开赛时间。
+* `ended_at` (TIMESTAMP): 游戏结算完结时间。
+
+### 2. 房间表 (`rooms`) —— 24小时自动清理
 存储房间的基本生命周期状态：
 * `id` (VARCHAR, PK): 唯一房间码（支持 6 位随机生成码或 4-10 位自定义代码）。
 * `name` (VARCHAR): 房间名称。
@@ -85,9 +98,9 @@
 * `status` (VARCHAR): 房间当前状态：`waiting` (等待中)、`playing` (对局中)、`finished` (已结束)。
 * `max_players` (INT): 房间最大人数限制（默认 4 人）。
 * `created_at` / `started_at` / `ended_at`: 时间戳记录。
-* **🧹 24小时自动清理规则 (Auto 24h Cleanup)**：每次加载房间列表或创建新房间时，系统会自动删除 `created_at < NOW() - INTERVAL '24 hours'` 的过期房间以及完结满 1 小时的历史对局（依赖 `ON DELETE CASCADE` 自动级联清理关联记录），自动释放自定义房间号。**注意：清理过程仅作用于 `rooms` 临时表，绝不触碰 `users` 永久表！**
+* **🧹 24小时自动清理规则 (Auto 24h Cleanup)**：每次加载房间列表或创建新房间时，系统会自动删除 `created_at < NOW() - INTERVAL '24 hours'` 的过期房间以及完结满 1 小时的历史对局（依赖 `ON DELETE CASCADE` 自动级联清理关联记录），自动释放自定义房间号。**注意：清理过程仅作用于 `rooms` 临时表，绝不触碰 `users` 永久表与 `match_history` 明细表！**
 
-### 2. 房间玩家关联表 (`room_players`)
+### 3. 房间玩家关联表 (`room_players`)
 记录当前加入房间的成员信息：
 * `id` (SERIAL, PK): 自增主键。
 * `room_id` (VARCHAR, FK): 关联的房间号（外键关联 `rooms.id`，开启 `ON DELETE CASCADE`）。
@@ -95,7 +108,7 @@
 * `is_host` (BOOLEAN): 是否为房主。
 * `joined_at` / `left_at`: 加入和离开时间。
 
-### 3. 游戏全局状态表 (`game_states`)
+### 4. 游戏全局状态表 (`game_states`)
 保存进行中或已结束游戏的核心数据：
 * `room_id` (VARCHAR, PK, FK): 关联的房间号。
 * `current_turn_username` (VARCHAR): 当前正在行动的玩家。
@@ -103,16 +116,18 @@
 
 ---
 
-## 🔒 用户认证与战绩自动增量更新
+## 🔒 核心逻辑模块与功能实现
 
-1. **注册与登录交互 (`authService.ts`)**：
-   - 注册时对用户提交的密码进行 10 轮加盐 Bcrypt 散列加密，写入 `users` 表。
-   - 登录时比对密码散列，成功后将用户账号及战绩缓存至 `localStorage`。
-2. **战绩自动结算 (`endGame`)**：
-   - 当一场对局产生获胜者（`winner`）时，后端 `endGame` 服务会自动更新 `users` 表：
-     - **胜者**：`total_games = total_games + 1`, `total_wins = total_wins + 1`；
-     - **负者/认输者**：`total_games = total_games + 1`, `total_losses = total_losses + 1`。
-   - 这使得战绩数据与临时房间完全解耦，即便 24 小时后房间缓存被清除，用户的胜负场次与胜率依然完整保留在 `users` 表中。
+1. **战绩自动结算与排行榜页面 (`/stats`)**：
+   - 游戏结束时自动在 `match_history` 插入每位参赛者的胜负及开赛时间，并递增 `users` 表的胜负计数。
+   - `/stats` 页面展现上表（个人对战历史明细：场次 #、对战胜负、当时胜率 %、开赛时间）与下表（全服胜率排行榜：第 1 名金色 🥇 高亮，当前用户加粗高亮）。
+2. **房间自动循环与房主 4 人开赛提醒**：
+   - 对局结束后房间状态自动重置为 `waiting`，所有玩家自动留在房间内，房主点击“开赛”即可直接开始下一盘。
+   - 当房间满 4 人时，房主页面顶部显眼位置展示“房间已集齐 4 人，游戏待开始！”醒目横幅与快速开赛按钮，普通玩家界面不干扰。
+3. **回合 30 秒倍数超时提醒机制**：
+   - 处于自己回合（`isMyTurn === true`）时触发独立计时器，当无操作停留满 30s、60s、90s... 时，自动弹窗与浮动 Toast 醒目提醒玩家做出选择。
+4. **容器化与自动化建表部署 (`Dockerfile` & `entrypoint.sh`)**：
+   - 使用单镜像封装 Node.js 与嵌入式 PostgreSQL，`entrypoint.sh` 脚本在容器启动时自动初始化 PostgreSQL 数据库并执行 `node scripts/setup-pg.js` 建表，全自动监听 **60824** 端口。
 
 ---
 
@@ -121,3 +136,4 @@
 * **按压缩放反馈 (`Scale on Press`)**：在所有控件、卡牌及数字按键上应用 `active:scale-[0.96] transition-transform duration-100`。
 * **同心圆角与图层阴影**：遵照同心圆角公式，配合多层柔和透明阴影，打造现代化高质感 UI 面板。
 * **双色主题切换 (Light/Dark Mode)**：基于自定义 `useTheme` Hook 结合 Tailwind CSS `.dark` 根类，全面适配系统偏好与手动切换。
+* **移动端防折行排版**：针对 iPhone/Android 320px-430px 屏幕使用 `whitespace-nowrap` 与 `shrink-0`，确保头部工具栏与对局牌面永不折行错位。
