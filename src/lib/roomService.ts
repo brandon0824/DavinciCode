@@ -1,5 +1,6 @@
 import { pgPool } from './postgres';
 import { initGame, GameData } from './gameLogic';
+import { updateUserStats, recordMatchHistory } from './authService';
 
 export interface Room {
   id: string;
@@ -277,11 +278,13 @@ export async function updateGameState(roomId: string, currentTurnUsername: strin
   return (res.rowCount || 0) > 0;
 }
 
-// End game
+// End game (reverts status to 'waiting' so players can view/rejoin the room in lobby list)
 export async function endGame(roomId: string, winner?: string): Promise<boolean> {
+  const room = await getRoom(roomId);
+
   await pgPool.query(
     'UPDATE rooms SET status = $1, ended_at = CURRENT_TIMESTAMP WHERE id = $2',
-    ['finished', roomId]
+    ['waiting', roomId]
   );
   
   if (winner) {
@@ -291,6 +294,12 @@ export async function endGame(roomId: string, winner?: string): Promise<boolean>
       gameData.turnStatus = 'ended';
       await updateGameState(roomId, gameData.currentTurn, gameData);
     }
+
+    // 自动更新所有参赛玩家的累计胜负与场次战绩，并写入对局明细表
+    const players = await getRoomPlayers(roomId);
+    const allUsernames = players.map(p => p.username);
+    await updateUserStats(winner, allUsernames);
+    await recordMatchHistory(roomId, winner, allUsernames, room?.startedAt || new Date());
   }
   
   console.log(`✅ 房间 ${roomId} 游戏结束，获胜者: ${winner || '未知'}`);

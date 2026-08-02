@@ -23,9 +23,9 @@ RUN npm run build
 # Make entrypoint script executable
 RUN chmod +x entrypoint.sh
 
-# Expose Next.js default port
-EXPOSE 3000
+# Expose Next.js port 60824
+ENV PORT=60824
+EXPOSE 60824
 
 # Set entrypoint to manage database startup and Next.js startup
 ENTRYPOINT ["/bin/bash", "./entrypoint.sh"]
-```

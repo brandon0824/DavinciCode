@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Play, LogOut, Users, Crown, User, Send, AlertCircle, HelpCircle, Sun, Moon, Lock, Flag } from 'lucide-react';
+import { ArrowLeft, Play, LogOut, Users, Crown, User, Send, AlertCircle, HelpCircle, Sun, Moon, Lock, Flag, Sparkles, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -33,7 +33,20 @@ interface ChatMessage {
 export default function RoomPage({ params }: { params: { roomId: string } }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const playerName = searchParams.get('name');
+  let playerName = searchParams.get('name');
+  if (!playerName && typeof window !== 'undefined') {
+    try {
+      const savedUserStr = sessionStorage.getItem('davinci_user');
+      if (savedUserStr) {
+        const parsed = JSON.parse(savedUserStr);
+        if (parsed?.username) {
+          playerName = parsed.username;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
   const { roomId } = params;
   const { theme, toggleTheme } = useTheme();
 
@@ -50,9 +63,77 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   const [guessValue, setGuessValue] = useState<string>('');
   const [surrenderModalOpen, setSurrenderModalOpen] = useState(false);
   
+  // User Stats State
+  const [userStats, setUserStats] = useState<{ totalGames: number; totalWins: number; totalLosses: number } | null>(null);
+
+  // 30-second Turn Inaction Reminder States (Multiples of 30s: 30s, 60s, 90s...)
+  const [turnSeconds, setTurnSeconds] = useState<number>(0);
+  const [turnWarningMsg, setTurnWarningMsg] = useState<string>('');
+  const lastTurnKeyRef = useRef<string>('');
+
+  // Monitor current turn and trigger 30s / 60s / 90s warning notifications
+  useEffect(() => {
+    if (!gameState || room?.status !== 'playing') {
+      setTurnSeconds(0);
+      setTurnWarningMsg('');
+      lastTurnKeyRef.current = '';
+      return;
+    }
+
+    const isMyTurn = gameState.currentTurn === playerName;
+    const currentTurnKey = `${gameState.currentTurn}_${gameState.turnStatus}_${gameState.winner || ''}`;
+
+    // Reset timer when turn or turn status changes
+    if (lastTurnKeyRef.current !== currentTurnKey) {
+      lastTurnKeyRef.current = currentTurnKey;
+      setTurnSeconds(0);
+      setTurnWarningMsg('');
+    }
+
+    if (!isMyTurn || gameState.winner) {
+      setTurnSeconds(0);
+      setTurnWarningMsg('');
+      return;
+    }
+
+    // 1-second interval timer when it's my turn
+    const timer = setInterval(() => {
+      setTurnSeconds(prev => {
+        const next = prev + 1;
+        // Trigger notification every 30 seconds (30s, 60s, 90s, 120s...)
+        if (next > 0 && next % 30 === 0) {
+          setTurnWarningMsg(`⏰ 您已思考超过 ${next} 秒，请尽快做出选择！`);
+        }
+        return next;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [gameState?.currentTurn, gameState?.turnStatus, gameState?.winner, room?.status, playerName]);
+
   // Chat States
   const [chatMessage, setChatMessage] = useState('');
   const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // Fetch current user battle stats for header display
+  const fetchUserStats = async () => {
+    if (!playerName) return;
+    try {
+      const res = await fetch(`/api/auth/user?username=${encodeURIComponent(playerName)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          setUserStats({
+            totalGames: data.user.totalGames || 0,
+            totalWins: data.user.totalWins || 0,
+            totalLosses: data.user.totalLosses || 0,
+          });
+        }
+      }
+    } catch (e) {
+      console.error('获取房间内用户战绩失败:', e);
+    }
+  };
 
   // Auto scroll inner chat container to bottom (without scrolling window)
   useEffect(() => {
@@ -71,10 +152,12 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
     fetchRoomAndPlayers();
     fetchGameState();
+    fetchUserStats();
 
     const interval = setInterval(() => {
       fetchRoomAndPlayers();
       fetchGameState();
+      fetchUserStats();
     }, 1500);
 
     return () => {
@@ -427,7 +510,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     );
   }
 
-  // GAME BOARD COMPONENT
+  // GAME BOARD COMPONENT (Renders only when room is actively playing)
   if (room?.status === 'playing' && gameState) {
     const isMyTurn = gameState.currentTurn === playerName;
     const myHand = gameState.hands[playerName!] || [];
@@ -445,17 +528,19 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col transition-colors duration-200">
         
         {/* Game Header */}
-        <header className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 py-3.5 px-4 sm:px-6 sticky top-0 z-40">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <span className="text-lg sm:text-xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-500 bg-clip-text text-transparent truncate max-w-[140px] sm:max-w-none">
-                达芬奇密码 Davinci Code
+        <header className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 py-2.5 sm:py-3.5 px-3 sm:px-6 sticky top-0 z-40">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 sm:gap-4">
+            
+            {/* Left: Title & Room Code */}
+            <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+              <span className="text-base sm:text-xl font-extrabold bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-500 bg-clip-text text-transparent">
+                达芬奇密码 <span className="hidden xs:inline">Davinci Code</span>
               </span>
               <div className="flex items-center space-x-1">
-                <span className="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-0.5 rounded-full text-xs font-mono border border-slate-300 dark:border-slate-700">
+                <span className="bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full text-xs font-mono border border-slate-300 dark:border-slate-700 whitespace-nowrap">
                   #{roomId}
                 </span>
-                {room.isPasswordProtected && (
+                {room?.isPasswordProtected && (
                   <span className="bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 p-1 rounded-full text-[10px]" title="加密房间">
                     <Lock className="w-3 h-3" strokeWidth={2.5} />
                   </span>
@@ -463,8 +548,20 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
               </div>
             </div>
             
-            <div className="flex items-center space-x-3 sm:space-x-4">
-              <div className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+            {/* Right: Actions & Current Turn */}
+            <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+              {/* User Battle Stats Display (Read-Only) */}
+              {userStats && (
+                <div className="hidden md:flex items-center space-x-1.5 whitespace-nowrap bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-xl text-xs shadow-sm">
+                  <span className="text-slate-600 dark:text-slate-300 font-semibold">{userStats.totalGames}场</span>
+                  <span className="text-slate-400">•</span>
+                  <span className="text-amber-600 dark:text-amber-400 font-bold">
+                    胜率{userStats.totalGames > 0 ? Math.round((userStats.totalWins / userStats.totalGames) * 100) : 0}%
+                  </span>
+                </div>
+              )}
+
+              <div className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap bg-slate-100 dark:bg-slate-800/60 px-2 py-1 rounded-xl border border-slate-200 dark:border-slate-700/80">
                 回合: <span className="font-extrabold text-blue-600 dark:text-blue-400">{gameState.currentTurn}</span>
               </div>
               
@@ -473,7 +570,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                 onClick={toggleTheme}
                 variant="outline"
                 size="icon"
-                className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 h-8 w-8 rounded-xl active:scale-[0.96] transition-transform duration-100"
+                className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 h-8 w-8 rounded-xl active:scale-[0.96] transition-transform duration-100 shrink-0"
               >
                 {theme === 'light' ? <Moon className="w-4 h-4" strokeWidth={2} /> : <Sun className="w-4 h-4 text-yellow-500" strokeWidth={2} />}
               </Button>
@@ -482,21 +579,36 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                 size="sm"
                 onClick={() => setSurrenderModalOpen(true)}
                 disabled={isEliminated(playerName!)}
-                className="bg-amber-50 hover:bg-amber-100 text-amber-600 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-400 dark:border-amber-900/50 dark:hover:bg-amber-900/40 text-xs px-2.5 py-1 sm:px-4 rounded-xl active:scale-[0.96] transition-transform duration-100 disabled:opacity-50"
+                className="bg-amber-50 hover:bg-amber-100 text-amber-600 border border-amber-200 dark:bg-amber-950/60 dark:text-amber-400 dark:border-amber-900/50 dark:hover:bg-amber-900/40 text-xs px-2.5 py-1 sm:px-3 rounded-xl active:scale-[0.96] transition-transform duration-100 disabled:opacity-50 shrink-0"
               >
-                <Flag className="w-3.5 h-3.5 mr-1.5" strokeWidth={2} /> 认输
+                <Flag className="w-3.5 h-3.5 mr-1" strokeWidth={2} /> 认输
               </Button>
 
               <Button
                 size="sm"
                 onClick={handleLeaveRoom}
-                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-xs px-2.5 py-1 sm:px-3 rounded-xl active:scale-[0.96] transition-transform duration-100"
+                className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-xs px-2.5 py-1 sm:px-3 rounded-xl active:scale-[0.96] transition-transform duration-100 shrink-0"
               >
                 <LogOut className="w-3.5 h-3.5 mr-1" strokeWidth={2} /> 退出
               </Button>
             </div>
           </div>
         </header>
+
+        {/* 30s Multiples Timeout Warning Toast Banner */}
+        <AnimatePresence>
+          {turnWarningMsg && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-amber-500 text-amber-950 font-black text-xs sm:text-sm px-5 py-2.5 rounded-2xl shadow-2xl border-2 border-amber-300 flex items-center space-x-2 animate-bounce"
+            >
+              <Clock className="w-4 h-4 fill-amber-950/20" strokeWidth={2.5} />
+              <span>{turnWarningMsg}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Board Main Area */}
         <div className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -522,6 +634,12 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                     {gameState.turnStatus === 'guessing_again' && '刚才猜测正确！你可以继续点对手的牌进行猜测，或者跳过回合。'}
                     {gameState.turnStatus === 'ended' && `对局已结束，获胜者为 ${gameState.winner}！`}
                   </p>
+                  {isMyTurn && turnSeconds >= 30 && (
+                    <div className="text-xs font-bold text-amber-600 dark:text-amber-400 mt-1 animate-pulse flex items-center">
+                      <Clock className="w-3.5 h-3.5 mr-1" />
+                      您已思考超过 {Math.floor(turnSeconds / 30) * 30} 秒，请尽快做出选择！
+                    </div>
+                  )}
                 </div>
               </div>
               {isMyTurn && gameState.turnStatus === 'guessing_again' && (
@@ -579,23 +697,23 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                                     });
                                   }
                                 }}
-                                className={`relative w-12 h-18 sm:w-14 sm:h-20 rounded-xl flex flex-col items-center justify-center font-extrabold cursor-pointer border transition-transform duration-100 active:scale-[0.96] ${
+                                className={`relative w-14 h-20 sm:w-16 sm:h-24 rounded-xl flex flex-col items-center justify-center font-extrabold cursor-pointer border transition-transform duration-100 active:scale-[0.96] shadow-sm ${
                                   card.isRevealed
                                     ? card.color === 'black'
                                       ? 'bg-slate-950 border-slate-800 text-white'
                                       : 'bg-white border-slate-300 text-slate-900'
                                     : card.color === 'black'
-                                      ? 'bg-slate-800 border-slate-700 text-slate-300 shadow-sm'
-                                      : 'bg-slate-100 border-slate-300 text-slate-800 shadow-sm'
-                                } ${showGuessAction ? 'hover:scale-105 hover:border-cyan-500 shadow-md ring-2 ring-cyan-500/30' : ''}`}
+                                      ? 'bg-slate-950 border-2 border-slate-800 text-white shadow-md'
+                                      : 'bg-white border-2 border-slate-300 text-slate-950 shadow-md'
+                                } ${showGuessAction ? 'hover:scale-105 hover:border-cyan-500 shadow-md ring-2 ring-cyan-500/50' : ''}`}
                               >
                                 {card.isRevealed ? (
-                                  <span className="text-xl sm:text-2xl">{card.value}</span>
+                                  <span className="text-2xl sm:text-3xl font-black">{card.value}</span>
                                 ) : (
-                                  <div className="flex flex-col items-center justify-center">
-                                    <HelpCircle className="w-4 h-4 sm:w-5 sm:h-5 opacity-40" strokeWidth={2} />
+                                  <div className="flex flex-col items-center justify-center p-1 text-center">
+                                    <HelpCircle className={`w-5 h-5 sm:w-6 sm:h-6 ${card.color === 'black' ? 'text-slate-400' : 'text-slate-500'}`} strokeWidth={2.5} />
                                     {showGuessAction && (
-                                      <span className="text-[8px] text-cyan-500 mt-1 uppercase font-black tracking-wider">
+                                      <span className="text-[9px] text-cyan-500 font-black tracking-wider mt-0.5 leading-none">
                                         猜测
                                       </span>
                                     )}
@@ -766,6 +884,12 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                   <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 mr-2 animate-ping"></span>
                   猜测 {guessTarget.username} 的牌
                 </h3>
+                {turnSeconds >= 30 && (
+                  <div className="mb-3 p-2.5 bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700/80 rounded-2xl text-xs font-extrabold text-amber-900 dark:text-amber-200 flex items-center justify-center space-x-1.5 animate-bounce">
+                    <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                    <span>⏰ 您已思考超过 {Math.floor(turnSeconds / 30) * 30} 秒，请尽快做出选择！</span>
+                  </div>
+                )}
                 <p className="text-slate-500 dark:text-slate-400 mb-4 text-xs">
                   猜测其从左数第 <span className="text-cyan-600 dark:text-cyan-400 font-extrabold">{guessTarget.cardIndex + 1}</span> 张 {guessTarget.color === 'black' ? '黑色' : '白色'} 牌的数字值（0 - 11）：
                 </p>
@@ -892,6 +1016,17 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
             </div>
 
             <div className="flex items-center space-x-2 sm:space-x-4">
+              {/* User Battle Stats Display (Read-Only) */}
+              {userStats && (
+                <div className="hidden sm:flex items-center space-x-1.5 whitespace-nowrap bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-1 rounded-xl text-xs shadow-sm">
+                  <span className="text-slate-600 dark:text-slate-300 font-semibold">{userStats.totalGames} 场对局</span>
+                  <span className="text-slate-400">•</span>
+                  <span className="text-amber-600 dark:text-amber-400 font-bold">
+                    胜率 {userStats.totalGames > 0 ? Math.round((userStats.totalWins / userStats.totalGames) * 100) : 0}%
+                  </span>
+                </div>
+              )}
+
               <div className="flex items-center space-x-1.5 text-slate-500 dark:text-slate-400 text-sm">
                 <Users className="w-4 h-4" strokeWidth={2} />
                 <span className="font-bold">{players.length}/{room?.maxPlayers}</span>
@@ -943,6 +1078,37 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                 分享房间号给朋友，当人数不少于 2 人时，房主即可点击上方“开赛”启动对局
               </p>
             </div>
+
+            {/* Host-Only Full Room (4 Players) Game Ready Notification Banner */}
+            {currentPlayer?.isHost && players.length >= (room?.maxPlayers || 4) && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-blue-500/15 border-2 border-amber-400/50 dark:border-amber-500/40 rounded-2xl p-4 sm:p-5 mb-8 shadow-lg shadow-amber-500/10 flex flex-col sm:flex-row items-center justify-between gap-4"
+              >
+                <div className="flex items-center space-x-3 text-left">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center flex-shrink-0 animate-bounce">
+                    <Sparkles className="w-6 h-6" strokeWidth={2.5} />
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-base sm:text-lg text-slate-800 dark:text-slate-100 flex items-center">
+                      <span>房间已集齐 4 人，游戏待开始！</span>
+                    </h4>
+                    <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-0.5">
+                      全员已就位！请房主点击【立即开赛】启动全新达芬奇密码对决
+                    </p>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleStartGame}
+                  className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 active:scale-[0.96] transition-transform duration-100 flex items-center justify-center space-x-2"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>立即开赛</span>
+                </Button>
+              </motion.div>
+            )}
 
             {/* Player Slot Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">

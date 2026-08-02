@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Users, ArrowRight, Lock, Key, Sun, Moon, ShieldCheck, Sparkles } from 'lucide-react';
+import { Plus, Users, ArrowRight, Lock, Key, Sun, Moon, ShieldCheck, Sparkles, UserCheck, LogOut, User, Trophy, LogIn, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -19,10 +19,24 @@ interface Room {
   createdAt: Date;
 }
 
+interface UserSession {
+  id?: string | number;
+  username: string;
+  totalGames: number;
+  totalWins: number;
+  totalLosses: number;
+}
+
 export default function HomePage() {
   const router = useRouter();
   const { theme, toggleTheme } = useTheme();
   
+  const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
+  const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
+  const [authUsername, setAuthUsername] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
+
   const [name, setName] = useState('');
   const [roomName, setRoomName] = useState('');
   const [roomPassword, setRoomPassword] = useState('');
@@ -38,11 +52,126 @@ export default function HomePage() {
   const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
   const [isLoadingRooms, setIsLoadingRooms] = useState(false);
 
+  // 实时从后端数据库获取最新战绩与胜率
+  const refreshUserData = async (uname: string) => {
+    if (!uname) return;
+    try {
+      const response = await fetch(`/api/auth/user?username=${encodeURIComponent(uname)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.user) {
+          const freshSession: UserSession = {
+            id: data.user.id,
+            username: data.user.username,
+            totalGames: data.user.totalGames || 0,
+            totalWins: data.user.totalWins || 0,
+            totalLosses: data.user.totalLosses || 0,
+          };
+          setCurrentUser(freshSession);
+          sessionStorage.setItem('davinci_user', JSON.stringify(freshSession));
+        }
+      }
+    } catch (err) {
+      console.error('从数据库实时同步用户战绩失败:', err);
+    }
+  };
+
+  // Read saved user session and immediately refresh from DB on mount & window focus
+  useEffect(() => {
+    try {
+      const savedUserStr = sessionStorage.getItem('davinci_user');
+      if (savedUserStr) {
+        const parsed: UserSession = JSON.parse(savedUserStr);
+        if (parsed && parsed.username) {
+          setCurrentUser(parsed);
+          setName(parsed.username);
+          refreshUserData(parsed.username);
+        }
+      }
+    } catch (e) {
+      console.error('读取用户缓存失败:', e);
+    }
+
+    const handleFocus = () => {
+      const savedUserStr = sessionStorage.getItem('davinci_user');
+      if (savedUserStr) {
+        try {
+          const parsed: UserSession = JSON.parse(savedUserStr);
+          if (parsed && parsed.username) {
+            refreshUserData(parsed.username);
+          }
+        } catch (e) {}
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
   // Password Prompt Modal State
   const [selectedRoomForPassword, setSelectedRoomForPassword] = useState<Room | null>(null);
   const [modalPasswordInput, setModalPasswordInput] = useState('');
 
-  // Fetch active rooms list
+  // Handle Login / Registration
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authUsername.trim() || !authPassword.trim()) {
+      setError('用户名和密码不能为空');
+      return;
+    }
+    if (authPassword.trim().length < 4) {
+      setError('密码长度至少需要4个字符');
+      return;
+    }
+
+    setIsAuthSubmitting(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const endpoint = authTab === 'login' ? '/api/auth/login' : '/api/auth/register';
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: authUsername.trim(),
+          password: authPassword.trim(),
+        }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        const userSession: UserSession = {
+          id: data.user.id,
+          username: data.user.username,
+          totalGames: data.user.totalGames || 0,
+          totalWins: data.user.totalWins || 0,
+          totalLosses: data.user.totalLosses || 0,
+        };
+        setCurrentUser(userSession);
+        setName(userSession.username);
+        sessionStorage.setItem('davinci_user', JSON.stringify(userSession));
+        setSuccess(authTab === 'login' ? `欢迎回来，${userSession.username}！` : `注册成功！欢迎加入，${userSession.username}！`);
+        setAuthPassword('');
+      } else {
+        setError(data.error || '认证失败');
+      }
+    } catch (err) {
+      console.error('认证错误:', err);
+      setError('网络通信错误，请稍后重试');
+    } finally {
+      setIsAuthSubmitting(false);
+    }
+  };
+
+  const handleLogout = () => {
+    sessionStorage.removeItem('davinci_user');
+    setCurrentUser(null);
+    setName('');
+    setSuccess('已成功退出登录');
+  };
+
+  // Fetch active rooms list & refresh user battle stats
   const fetchAvailableRooms = async () => {
     setIsLoadingRooms(true);
     try {
@@ -50,6 +179,17 @@ export default function HomePage() {
       if (response.ok) {
         const data = await response.json();
         setAvailableRooms(data.rooms || []);
+      }
+
+      // 循环同步刷新当前登录用户的最新战绩数据
+      const savedUserStr = sessionStorage.getItem('davinci_user');
+      if (savedUserStr) {
+        try {
+          const parsed = JSON.parse(savedUserStr);
+          if (parsed?.username) {
+            refreshUserData(parsed.username);
+          }
+        } catch (e) {}
       }
     } catch (err) {
       console.error('获取房间列表失败:', err);
@@ -253,209 +393,336 @@ export default function HomePage() {
       <div className="max-w-6xl mx-auto w-full">
         
         {/* Header Toolbar */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col sm:flex-row gap-4 justify-between items-center mb-8">
           <div className="flex items-center space-x-2">
             <Sparkles className="w-6 h-6 text-blue-600 dark:text-blue-400 animate-pulse" strokeWidth={2} />
-            <h1 className="text-2xl sm:text-3xl font-extrabold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 dark:from-blue-400 dark:via-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">
+            <h1 className="text-xl sm:text-3xl font-extrabold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 dark:from-blue-400 dark:via-indigo-400 dark:to-purple-400 bg-clip-text text-transparent">
               达芬奇密码 Davinci Code
             </h1>
           </div>
-          <Button
-            onClick={toggleTheme}
-            variant="outline"
-            className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 shadow-sm rounded-xl active:scale-[0.96] transition-transform duration-100"
-          >
-            {theme === 'light' ? (
-              <span className="flex items-center"><Moon className="w-4 h-4 mr-1.5" strokeWidth={2} /> 深色模式</span>
-            ) : (
-              <span className="flex items-center"><Sun className="w-4 h-4 mr-1.5 text-yellow-500" strokeWidth={2} /> 浅色模式</span>
+
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 w-full sm:w-auto">
+            {currentUser && (
+              <div className="flex items-center space-x-2 sm:space-x-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2.5 sm:px-3 py-1.5 rounded-xl shadow-sm max-w-full overflow-hidden">
+                <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xs shrink-0">
+                  <User className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate max-w-[70px] xs:max-w-[100px] sm:max-w-none">
+                    {currentUser.username}
+                  </div>
+                  <div className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 flex items-center space-x-1 whitespace-nowrap">
+                    <span>{currentUser.totalGames}场对局</span>
+                    <span>•</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                      胜率 {currentUser.totalGames > 0 ? Math.round((currentUser.totalWins / currentUser.totalGames) * 100) : 0}%
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-1 border-l border-slate-200 dark:border-slate-800 pl-1.5 ml-1 shrink-0">
+                  <Button
+                    onClick={() => router.push('/stats')}
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 h-7 px-1.5 font-semibold flex items-center shrink-0"
+                    title="查看战绩明细与胜率排行榜"
+                  >
+                    <Trophy className="w-3.5 h-3.5 mr-1 text-amber-500" />
+                    <span>战绩榜</span>
+                  </Button>
+
+                  <Button
+                    onClick={handleLogout}
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-slate-500 hover:text-red-600 dark:hover:text-red-400 h-7 px-1.5 shrink-0"
+                    title="退出登录"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
             )}
-          </Button>
+
+            <Button
+              onClick={toggleTheme}
+              variant="outline"
+              className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 shadow-sm rounded-xl active:scale-[0.96] transition-transform duration-100"
+            >
+              {theme === 'light' ? (
+                <span className="flex items-center"><Moon className="w-4 h-4 mr-1.5" strokeWidth={2} /> 深色模式</span>
+              ) : (
+                <span className="flex items-center"><Sun className="w-4 h-4 mr-1.5 text-yellow-500" strokeWidth={2} /> 浅色模式</span>
+              )}
+            </Button>
+          </div>
         </div>
 
         {/* Main Content Layout */}
         <div className="flex flex-col lg:flex-row gap-8 w-full">
           
-          {/* Left Column (Create & Join Cards) */}
+          {/* Left Column (Auth or Create & Join Cards) */}
           <div className="flex-1 space-y-8">
             
-            {/* Create Room Card */}
-            <Card className="bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800/80 shadow-md shadow-slate-200/50 dark:shadow-none rounded-2xl p-2 sm:p-4">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100 flex items-center">
-                  <Plus className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" strokeWidth={2.5} />
-                  创建新房间
-                </CardTitle>
-                <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm">
-                  创建一个全新的游戏房间，可设置房间密码防打扰
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                    你的名字
-                  </label>
-                  <Input
-                    type="text"
-                    placeholder="输入你的昵称"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                    房间名称
-                  </label>
-                  <Input
-                    type="text"
-                    placeholder="输入房间名称"
-                    value={roomName}
-                    onChange={(e) => setRoomName(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl"
-                  />
-                </div>
-                
-                {/* Room Password Checkbox & Option */}
-                <div className="space-y-3 pt-1">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="useRoomPassword"
-                      checked={useRoomPassword}
-                      onChange={(e) => setUseRoomPassword(e.target.checked)}
-                      className="w-4 h-4 text-blue-600 dark:text-blue-500 bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-800 rounded focus:ring-blue-500 cursor-pointer"
-                    />
-                    <label htmlFor="useRoomPassword" className="text-sm font-semibold text-slate-700 dark:text-slate-300 cursor-pointer flex items-center">
-                      <Lock className="w-3.5 h-3.5 mr-1.5 text-amber-500" strokeWidth={2} />
-                      加密房间 (需要密码才能进入)
-                    </label>
+            {!currentUser ? (
+              <Card className="bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800/80 shadow-lg rounded-2xl p-2 sm:p-4">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100 flex items-center">
+                      <ShieldCheck className="w-6 h-6 mr-2 text-blue-600 dark:text-blue-400" strokeWidth={2.5} />
+                      {authTab === 'login' ? '玩家账号登录' : '注册新玩家账号'}
+                    </CardTitle>
                   </div>
-
-                  <AnimatePresence initial={false}>
-                    {useRoomPassword && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-                        className="overflow-hidden p-1"
-                      >
-                        <div className="py-1">
-                          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                            设置房间密码
-                          </label>
-                          <Input
-                            type="password"
-                            placeholder="设置进入密码"
-                            value={roomPassword}
-                            onChange={(e) => setRoomPassword(e.target.value)}
-                            className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl"
-                          />
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Custom Room ID Toggle */}
-                  <div className="flex items-center space-x-2 pt-2">
-                    <input
-                      type="checkbox"
-                      id="useCustomRoomId"
-                      checked={useCustomRoomId}
-                      onChange={(e) => setUseCustomRoomId(e.target.checked)}
-                      className="w-4 h-4 text-blue-600 dark:text-blue-500 bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-800 rounded focus:ring-blue-500 cursor-pointer"
-                    />
-                    <label htmlFor="useCustomRoomId" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
-                      使用自定义房间号
-                    </label>
-                  </div>
+                  <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm">
+                    {authTab === 'login' ? '输入您的用户名和密码登录游戏，永久保存您的个人战绩' : '创建新玩家账号，密码将加密安全保存'}
+                  </p>
                   
-                  <AnimatePresence initial={false}>
-                    {useCustomRoomId && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
-                        className="overflow-hidden p-1"
-                      >
-                        <div className="py-1">
-                          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                            自定义房间号
-                          </label>
-                          <Input
-                            type="text"
-                            placeholder="输入4-10位字母数字组合"
-                            value={customRoomId}
-                            onChange={(e) => setCustomRoomId(e.target.value)}
-                            className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl"
-                            maxLength={10}
-                          />
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                <Button
-                  onClick={handleCreateRoom}
-                  disabled={isLoading || !name.trim() || !roomName.trim()}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl active:scale-[0.96] transition-transform duration-100 shadow-md shadow-blue-500/10"
-                >
-                  {isLoading ? '创建中...' : '创建房间'}
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Join Room Card */}
-            <Card className="bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800/80 shadow-md shadow-slate-200/50 dark:shadow-none rounded-2xl p-2 sm:p-4">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100 flex items-center">
-                  <ArrowRight className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" strokeWidth={2.5} />
-                  加入现有房间
-                </CardTitle>
-                <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm">
-                  直接输入朋友创建房间后获得的房间码加入对局
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                      房间号
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder="输入房间号 (至少4位)"
-                      value={roomId}
-                      onChange={(e) => setRoomId(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 font-mono text-center tracking-wider rounded-xl"
-                    />
+                  {/* Auth Mode Toggle Tabs */}
+                  <div className="flex bg-slate-100 dark:bg-slate-950 p-1 rounded-xl mt-4">
+                    <button
+                      type="button"
+                      onClick={() => { setAuthTab('login'); setError(''); setSuccess(''); }}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center space-x-1.5 ${
+                        authTab === 'login'
+                          ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                      }`}
+                    >
+                      <LogIn className="w-3.5 h-3.5" />
+                      <span>登录账号</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setAuthTab('register'); setError(''); setSuccess(''); }}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center space-x-1.5 ${
+                        authTab === 'register'
+                          ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                      }`}
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>注册账号</span>
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
-                      密码 (如有)
-                    </label>
-                    <Input
-                      type="password"
-                      placeholder="无密码可留空"
-                      value={joinPassword}
-                      onChange={(e) => setJoinPassword(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 font-mono rounded-xl"
-                    />
-                  </div>
-                </div>
-                
-                <Button
-                  onClick={() => handleJoinRoom()}
-                  disabled={isLoading || !name.trim() || !roomId.trim()}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl active:scale-[0.96] transition-transform duration-100 shadow-md shadow-indigo-500/10"
-                >
-                  {isLoading ? '加入中...' : '加入房间'}
-                </Button>
-              </CardContent>
-            </Card>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleAuthSubmit} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                        用户名
+                      </label>
+                      <Input
+                        type="text"
+                        placeholder="1-20个字符 (支持中文/英文/数字/_)"
+                        value={authUsername}
+                        onChange={(e) => setAuthUsername(e.target.value)}
+                        className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                        密码 (加密保存)
+                      </label>
+                      <Input
+                        type="password"
+                        placeholder="至少4个字符"
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                        className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl"
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      disabled={isAuthSubmitting || !authUsername.trim() || !authPassword.trim()}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl active:scale-[0.96] transition-transform duration-100 shadow-md shadow-blue-500/10"
+                    >
+                      {isAuthSubmitting ? (authTab === 'login' ? '登录中...' : '注册中...') : (authTab === 'login' ? '立即登录' : '创建并登录账号')}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Create Room Card */}
+                <Card className="bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800/80 shadow-md shadow-slate-200/50 dark:shadow-none rounded-2xl p-2 sm:p-4">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100 flex items-center">
+                      <Plus className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" strokeWidth={2.5} />
+                      创建新房间
+                    </CardTitle>
+                    <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm">
+                      创建一个全新的游戏房间，可设置房间密码防打扰
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                        你的名字
+                      </label>
+                      <Input
+                        type="text"
+                        value={name}
+                        disabled
+                        className="w-full bg-slate-100 dark:bg-slate-950/80 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 rounded-xl cursor-not-allowed font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                        房间名称
+                      </label>
+                      <Input
+                        type="text"
+                        placeholder="输入房间名称"
+                        value={roomName}
+                        onChange={(e) => setRoomName(e.target.value)}
+                        className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl"
+                      />
+                    </div>
+                    
+                    {/* Room Password Checkbox & Option */}
+                    <div className="space-y-3 pt-1">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="useRoomPassword"
+                          checked={useRoomPassword}
+                          onChange={(e) => setUseRoomPassword(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 dark:text-blue-500 bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-800 rounded focus:ring-blue-500 cursor-pointer"
+                        />
+                        <label htmlFor="useRoomPassword" className="text-sm font-semibold text-slate-700 dark:text-slate-300 cursor-pointer flex items-center">
+                          <Lock className="w-3.5 h-3.5 mr-1.5 text-amber-500" strokeWidth={2} />
+                          加密房间 (需要密码才能进入)
+                        </label>
+                      </div>
+
+                      <AnimatePresence initial={false}>
+                        {useRoomPassword && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+                            className="overflow-hidden p-1"
+                          >
+                            <div className="py-1">
+                              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                                设置房间密码
+                              </label>
+                              <Input
+                                type="password"
+                                placeholder="设置进入密码"
+                                value={roomPassword}
+                                onChange={(e) => setRoomPassword(e.target.value)}
+                                className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl"
+                              />
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Custom Room ID Toggle */}
+                      <div className="flex items-center space-x-2 pt-2">
+                        <input
+                          type="checkbox"
+                          id="useCustomRoomId"
+                          checked={useCustomRoomId}
+                          onChange={(e) => setUseCustomRoomId(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 dark:text-blue-500 bg-slate-100 dark:bg-slate-950 border-slate-300 dark:border-slate-800 rounded focus:ring-blue-500 cursor-pointer"
+                        />
+                        <label htmlFor="useCustomRoomId" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
+                          使用自定义房间号
+                        </label>
+                      </div>
+                      
+                      <AnimatePresence initial={false}>
+                        {useCustomRoomId && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+                            className="overflow-hidden p-1"
+                          >
+                            <div className="py-1">
+                              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                                自定义房间号
+                              </label>
+                              <Input
+                                type="text"
+                                placeholder="输入4-10位字母数字组合"
+                                value={customRoomId}
+                                onChange={(e) => setCustomRoomId(e.target.value)}
+                                className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl"
+                                maxLength={10}
+                              />
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+
+                    <Button
+                      onClick={handleCreateRoom}
+                      disabled={isLoading || !name.trim() || !roomName.trim()}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl active:scale-[0.96] transition-transform duration-100 shadow-md shadow-blue-500/10"
+                    >
+                      {isLoading ? '创建中...' : '创建房间'}
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Join Room Card */}
+                <Card className="bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800/80 shadow-md shadow-slate-200/50 dark:shadow-none rounded-2xl p-2 sm:p-4">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-slate-100 flex items-center">
+                      <ArrowRight className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" strokeWidth={2.5} />
+                      加入现有房间
+                    </CardTitle>
+                    <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm">
+                      直接输入朋友创建房间后获得的房间码加入对局
+                    </p>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                          房间号
+                        </label>
+                        <Input
+                          type="text"
+                          placeholder="输入房间号 (至少4位)"
+                          value={roomId}
+                          onChange={(e) => setRoomId(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 font-mono text-center tracking-wider rounded-xl"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
+                          密码 (如有)
+                        </label>
+                        <Input
+                          type="password"
+                          placeholder="无密码可留空"
+                          value={joinPassword}
+                          onChange={(e) => setJoinPassword(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 font-mono rounded-xl"
+                        />
+                      </div>
+                    </div>
+                    
+                    <Button
+                      onClick={() => handleJoinRoom()}
+                      disabled={isLoading || !name.trim() || !roomId.trim()}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl active:scale-[0.96] transition-transform duration-100 shadow-md shadow-indigo-500/10"
+                    >
+                      {isLoading ? '加入中...' : '加入房间'}
+                    </Button>
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </div>
 
           {/* Right Column (Available Rooms List) */}

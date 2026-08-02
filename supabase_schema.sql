@@ -7,6 +7,18 @@ drop table if exists game_states cascade;
 drop table if exists room_players cascade;
 drop table if exists rooms cascade;
 
+-- 0. Create Users Table (User Accounts & Battle Stats)
+create table if not exists users (
+  id uuid default uuid_generate_v4() primary key,
+  username text unique not null,
+  password_hash text not null,
+  total_games integer default 0 not null,
+  total_wins integer default 0 not null,
+  total_losses integer default 0 not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  last_login_at timestamp with time zone
+);
+
 -- 1. Create Rooms Table
 create table rooms (
   id text primary key, -- 6-character room code (e.g., '4ARFEU')
@@ -38,14 +50,14 @@ create table game_states (
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 4. Create Game History Table
-create table game_history (
+-- 4. Create Match History Table
+create table match_history (
   id uuid default uuid_generate_v4() primary key,
-  room_id text references rooms(id) on delete cascade not null,
+  room_id text not null,
   username text not null,
-  action_type text not null, -- 'guess', 'reveal', 'draw', 'pass'
-  action_data jsonb,
-  timestamp timestamp with time zone default timezone('utc'::text, now()) not null
+  is_winner boolean default false not null,
+  started_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  ended_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
 -- Enable Realtime for all tables
