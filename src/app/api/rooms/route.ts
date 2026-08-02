@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const roomId = await createRoom({ name, password, customRoomId });
+    const roomId = await createRoom({ name, username, password, customRoomId });
     
     // 创建房间后，立即让创建者加入房间
     await joinRoom({ roomId, username, password });

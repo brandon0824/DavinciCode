@@ -217,6 +217,11 @@ export default function HomePage() {
 
   // Handle Room Creation
   const handleCreateRoom = async () => {
+    if (!currentUser || !currentUser.username) {
+      setError('请先在上方注册或登录账号，登录后方可创建房间！');
+      return;
+    }
+
     if (!validateUsername(name)) {
       setError('用户名格式不正确（1-20个字符，支持中文、英文、数字、下划线）');
       return;
@@ -254,7 +259,7 @@ export default function HomePage() {
         },
         body: JSON.stringify({
           name: roomName,
-          username: name,
+          username: currentUser.username,
           password: useRoomPassword ? roomPassword.trim() : undefined,
           customRoomId: useCustomRoomId ? customRoomId.trim() : undefined,
         }),
@@ -267,7 +272,7 @@ export default function HomePage() {
         setRoomId(data.roomId);
         fetchAvailableRooms();
         setTimeout(() => {
-          router.push(`/room/${data.roomId}?name=${encodeURIComponent(name)}`);
+          router.push(`/room/${data.roomId}?name=${encodeURIComponent(currentUser.username)}`);
         }, 1000);
       } else {
         setError(data.error || '创建房间失败');
@@ -282,6 +287,11 @@ export default function HomePage() {
 
   // Handle Direct Join by Room ID
   const handleJoinRoom = async (directPassword?: string) => {
+    if (!currentUser || !currentUser.username) {
+      setError('请先在上方注册或登录账号，登录后方可加入房间！');
+      return;
+    }
+
     if (!validateUsername(name)) {
       setError('用户名格式不正确（1-20个字符，支持中文、英文、数字、下划线）');
       return;
@@ -302,7 +312,7 @@ export default function HomePage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          username: name,
+          username: currentUser.username,
           password: directPassword || joinPassword || undefined,
         }),
       });
@@ -312,7 +322,7 @@ export default function HomePage() {
       if (response.ok) {
         setSuccess('加入房间成功！');
         setTimeout(() => {
-          router.push(`/room/${roomId}?name=${encodeURIComponent(name)}`);
+          router.push(`/room/${roomId}?name=${encodeURIComponent(currentUser.username)}`);
         }, 800);
       } else {
         setError(data.error || '加入房间失败，请检查房间号与密码');
@@ -327,8 +337,8 @@ export default function HomePage() {
 
   // Click Join on Available Rooms List Item
   const handleJoinAvailableRoomClick = (roomItem: Room) => {
-    if (!name.trim()) {
-      setError('请先输入你的名字');
+    if (!currentUser || !currentUser.username) {
+      setError('请先在上方注册或登录账号，登录后方可进入房间！');
       return;
     }
 
@@ -342,6 +352,11 @@ export default function HomePage() {
 
   // Submit Password in Modal
   const handleModalPasswordSubmit = async () => {
+    if (!currentUser || !currentUser.username) {
+      setError('请先在上方注册或登录账号，登录后方可进入房间！');
+      return;
+    }
+
     if (!selectedRoomForPassword) return;
     if (!modalPasswordInput.trim()) {
       setError('请输入房间密码');
@@ -354,6 +369,11 @@ export default function HomePage() {
 
   // Perform Join Request
   const executeJoinRoom = async (targetRoomId: string, pass?: string) => {
+    if (!currentUser || !currentUser.username) {
+      setError('请先在上方注册或登录账号，登录后方可进入房间！');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
     setSuccess('');
@@ -365,7 +385,7 @@ export default function HomePage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          username: name,
+          username: currentUser.username,
           password: pass || undefined,
         }),
       });
@@ -375,7 +395,7 @@ export default function HomePage() {
       if (response.ok) {
         setSuccess('加入房间成功！');
         setTimeout(() => {
-          router.push(`/room/${targetRoomId}?name=${encodeURIComponent(name)}`);
+          router.push(`/room/${targetRoomId}?name=${encodeURIComponent(currentUser.username)}`);
         }, 800);
       } else {
         setError(data.error || '加入房间失败');
@@ -763,7 +783,6 @@ export default function HomePage() {
                       
                       <Button
                         onClick={() => handleJoinAvailableRoomClick(roomItem)}
-                        disabled={!name.trim()}
                         size="sm"
                         className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl active:scale-[0.96] transition-transform duration-100 flex items-center space-x-1"
                       >

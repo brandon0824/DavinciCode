@@ -23,6 +23,7 @@ export interface RoomPlayer {
 
 export interface CreateRoomData {
   name: string;
+  username: string;
   password?: string;
   maxPlayers?: number;
   customRoomId?: string;
@@ -57,10 +58,19 @@ export async function cleanupExpiredRooms(): Promise<number> {
 
 // Create a room
 export async function createRoom(data: CreateRoomData): Promise<string> {
+  // 1. 验证创建者是否为已注册用户
+  const { name, username, password, maxPlayers = 4, customRoomId } = data;
+  if (!username || !username.trim()) {
+    throw new Error('未检测到账号，请先注册或登录账号！');
+  }
+
+  const userCheck = await pgPool.query('SELECT 1 FROM users WHERE username = $1', [username.trim()]);
+  if (userCheck.rows.length === 0) {
+    throw new Error('未注册的用户账号，请先注册或登录账号后再创建房间！');
+  }
+
   // 创建新房间前自动清理 24 小时前创建的过期房间
   await cleanupExpiredRooms();
-
-  const { name, password, maxPlayers = 4, customRoomId } = data;
   
   let roomId: string;
   if (customRoomId && customRoomId.trim()) {
@@ -136,6 +146,16 @@ export async function getRoomList(): Promise<Room[]> {
 export async function joinRoom(data: JoinRoomData): Promise<boolean> {
   const { roomId, username, password } = data;
   
+  if (!username || !username.trim()) {
+    throw new Error('未检测到账号，请先注册或登录账号！');
+  }
+
+  // 0. 验证加入者是否为已注册用户
+  const userCheck = await pgPool.query('SELECT 1 FROM users WHERE username = $1', [username.trim()]);
+  if (userCheck.rows.length === 0) {
+    throw new Error('未注册的用户账号，请先在主页注册或登录账号后再进入房间！');
+  }
+
   // 1. Fetch room row including raw password for verification
   const res = await pgPool.query('SELECT * FROM rooms WHERE id = $1', [roomId]);
   if (res.rows.length === 0) {
