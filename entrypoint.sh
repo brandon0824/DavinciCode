@@ -18,11 +18,12 @@ if [ "$DB_HOST" = "localhost" ] || [ "$DB_HOST" = "127.0.0.1" ]; then
     chown -R postgres:postgres /var/lib/postgresql
   fi
 
-  echo "🌐 开启 PostgreSQL 外网远程监听与认证规则 (listen_addresses = '*')..."
+  echo "🌐 开启 PostgreSQL 外网远程监听与关闭强制 SSL (listen_addresses = '*', ssl = off)..."
   sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" /etc/postgresql/15/main/postgresql.conf 2>/dev/null || true
   sed -i "s/listen_addresses = 'localhost'/listen_addresses = '*'/g" /etc/postgresql/15/main/postgresql.conf 2>/dev/null || true
-  grep -q "listen_addresses = '*'" /etc/postgresql/15/main/postgresql.conf || echo "listen_addresses = '*'" >> /etc/postgresql/15/main/postgresql.conf 2>/dev/null || true
+  sed -i "s/ssl = on/ssl = off/g" /etc/postgresql/15/main/postgresql.conf 2>/dev/null || true
   
+  grep -q "listen_addresses = '*'" /etc/postgresql/15/main/postgresql.conf || echo "listen_addresses = '*'" >> /etc/postgresql/15/main/postgresql.conf 2>/dev/null || true
   grep -q "0.0.0.0/0" /etc/postgresql/15/main/pg_hba.conf || echo "host all all 0.0.0.0/0 md5" >> /etc/postgresql/15/main/pg_hba.conf 2>/dev/null || true
 
   echo "⚡ 启动 PostgreSQL 15 服务..."
