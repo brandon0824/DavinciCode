@@ -9,6 +9,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { GameData, Card as GameCard, sortCards, getCardDisplayValue } from '@/lib/gameLogic';
 import { useTheme } from '@/lib/useTheme';
+import Footer from '@/components/Footer';
 
 interface Player {
   id: string;
@@ -524,9 +525,9 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
   // GAME BOARD COMPONENT (Renders during active play OR when game over modal is active prior to acknowledgment)
   const isGameOver = Boolean(gameState && (gameState.winner || gameState.turnStatus === 'ended'));
-  const shouldShowGameBoard = Boolean(gameState && (room?.status === 'playing' || (isGameOver && !hasAcknowledgedGameOver)));
+  const shouldShowGameBoard = Boolean(gameState && gameState.hands && (room?.status === 'playing' || (isGameOver && !hasAcknowledgedGameOver)));
 
-  if (shouldShowGameBoard && gameState) {
+  if (shouldShowGameBoard && gameState && gameState.hands) {
     const isMyTurn = gameState.currentTurn === playerName;
     const myHand = gameState.hands[playerName!] || [];
     const opponents = players.filter(p => p.username !== playerName);
@@ -1098,6 +1099,9 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
             </div>
           )}
         </AnimatePresence>
+
+        {/* Global Footer with Real-time Online Counter */}
+        <Footer />
       </div>
     );
   }
@@ -1190,7 +1194,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
       </div>
 
       {/* Waiting Room Body */}
-      <div className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 py-12 w-full flex items-center justify-center">
+      <div className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 py-12 w-full flex flex-col items-center justify-center">
         <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 max-w-4xl w-full shadow-xl rounded-3xl p-2 sm:p-4">
           <CardContent className="p-6 sm:p-8">
             <div className="text-center mb-10">
@@ -1302,6 +1306,26 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
               })}
             </div>
 
+            {/* Waiting Room Dynamic Event Logs */}
+            {gameState?.logs && gameState.logs.length > 0 && (
+              <div className="bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 mb-6 max-w-lg mx-auto text-left shadow-inner">
+                <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1.5 flex items-center space-x-1.5">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                  </span>
+                  <span>📢 房间动态提示</span>
+                </div>
+                <div className="space-y-1 max-h-24 overflow-y-auto text-xs font-mono text-slate-600 dark:text-slate-300">
+                  {gameState.logs.slice(-4).map((log, i) => (
+                    <div key={i} className="py-0.5 border-b border-slate-100 dark:border-slate-800/50 last:border-0">
+                      • {log}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="text-center bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 max-w-xs mx-auto">
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 最少需 2 名玩家，当前已加入: {players.length} 人
@@ -1310,6 +1334,9 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Global Footer with Real-time Online Counter */}
+      <Footer />
     </div>
   );
 }

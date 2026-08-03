@@ -9,10 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { validateUsername, validateRoomName } from '@/lib/utils';
 import { useTheme } from '@/lib/useTheme';
+import Footer from '@/components/Footer';
 
 interface Room {
   id: string;
   name: string;
+  hostUsername?: string;
   isPasswordProtected?: boolean;
   status: string;
   maxPlayers: number;
@@ -171,9 +173,11 @@ export default function HomePage() {
     setSuccess('已成功退出登录');
   };
 
-  // Fetch active rooms list & refresh user battle stats
-  const fetchAvailableRooms = async () => {
-    setIsLoadingRooms(true);
+  // Fetch active rooms list & refresh user battle stats (supports silent background polling)
+  const fetchAvailableRooms = async (isSilent = false) => {
+    if (!isSilent && availableRooms.length === 0) {
+      setIsLoadingRooms(true);
+    }
     try {
       const response = await fetch('/api/rooms');
       if (response.ok) {
@@ -194,13 +198,15 @@ export default function HomePage() {
     } catch (err) {
       console.error('获取房间列表失败:', err);
     } finally {
-      setIsLoadingRooms(false);
+      if (!isSilent) {
+        setIsLoadingRooms(false);
+      }
     }
   };
 
   useEffect(() => {
-    fetchAvailableRooms();
-    const interval = setInterval(fetchAvailableRooms, 3000);
+    fetchAvailableRooms(false);
+    const interval = setInterval(() => fetchAvailableRooms(true), 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -342,7 +348,10 @@ export default function HomePage() {
       return;
     }
 
-    if (roomItem.isPasswordProtected) {
+    const isHost = roomItem.hostUsername === currentUser.username;
+
+    // 如果该房间是当前用户创建的（房主），免密码直接重返房间！
+    if (roomItem.isPasswordProtected && !isHost) {
       setSelectedRoomForPassword(roomItem);
       setModalPasswordInput('');
     } else {
@@ -890,6 +899,9 @@ export default function HomePage() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Global Footer with Real-time Online Counter */}
+        <Footer />
 
       </div>
     </div>

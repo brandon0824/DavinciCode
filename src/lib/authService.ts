@@ -53,10 +53,10 @@ export async function registerUser(username: string, password: string): Promise<
   // 2. 加密密码
   const passwordHash = await bcrypt.hash(trimmedPassword, 10);
 
-  // 3. 写入数据库
+  // 3. 写入数据库 (同时设 last_login_at 为当前时间)
   const insertRes = await pgPool.query(
-    `INSERT INTO users (username, password_hash) 
-     VALUES ($1, $2) 
+    `INSERT INTO users (username, password_hash, last_login_at) 
+     VALUES ($1, $2, CURRENT_TIMESTAMP) 
      RETURNING id, username, total_games, total_wins, total_losses, created_at, last_login_at`,
     [trimmedUsername, passwordHash]
   );

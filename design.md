@@ -129,9 +129,16 @@ Follows clean separation of concerns:
 4. **Automated Stats Settlement & Leaderboard (`/stats`)**:
    - Automatically inserts match outcome records into `match_history` and updates user win/loss counters upon game end.
    - The `/stats` page displays personal battle logs and global leaderboard (rank #1 highlighted in gold 🥇).
-5. **30-Second Multiples Inaction Reminder**:
+5. **🟢 Global Real-Time Online Counter & 15s Heartbeat Detection**:
+   - Footer component sends a silent heartbeat every 4 seconds. The online count API checks active heartbeats within 15 seconds; closing tabs automatically deducts offline users within 15 seconds.
+6. **⚠️ 20-Second Room Player Offline Auto-Cleanup & Dynamic Event Logs**:
+   - Room polling checks player heartbeat timestamps and automatically kicks users who are inactive for >20s (e.g. tab closed), freeing room slots and transferring host status automatically.
+   - Waiting room lobby displays a **`📢 Room Event Log`** stream tracking player joins (`📢`), leaves (`🚪`), and offline cleanups (`⚠️`).
+7. **🔑 Room Host Password Bypass for Self-Created Rooms**:
+   - Room hosts returning to their own password-protected rooms bypass the password modal on frontend and backend.
+8. **30-Second Multiples Inaction Reminder**:
    - Triggers an active timer during the player's turn. Inaction exceeding 30s, 60s, 90s... prompts an animated warning toast.
-6. **Containerization & Automatic DB Setup (`Dockerfile` & `entrypoint.sh`)**:
+9. **Containerization & Automatic DB Setup (`Dockerfile` & `entrypoint.sh`)**:
    - Single Docker image combining Node.js and PostgreSQL 15, listening on port **60824**. Data persistence ensured via host directory mount at `/root/davinci_pgdata`.
 
 ---

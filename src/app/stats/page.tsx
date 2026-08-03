@@ -7,6 +7,7 @@ import { ArrowLeft, Trophy, Sun, Moon, Clock, User, CheckCircle2, XCircle } from
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { useTheme } from '@/lib/useTheme';
+import Footer from '@/components/Footer';
 
 interface MatchHistoryItem {
   id: number;
@@ -323,6 +324,9 @@ export default function StatsPage() {
 
           </div>
         )}
+
+        {/* Global Footer with Real-time Online Counter */}
+        <Footer />
 
       </div>
     </div>

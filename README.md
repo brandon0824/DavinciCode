@@ -34,6 +34,18 @@ Language Options:
   * Built following `better-ui` engineering guidelines with tactile press feedback (`Scale on Press`), concentric radii, soft shadows, and Light/Dark mode toggling.
   * Fully optimized for mobile screens (iPhone/Android) with zero text wrapping or vertical misalignment.
 
+* **🟢 Real-time Global Online Counter & 15s Heartbeat Window**:
+  * Displays **`🟢 Active Online Players: X`** with a pulsing emerald status indicator at the footer of all pages.
+  * Silent client heartbeat runs every 4 seconds. Closing browser tabs automatically deducts offline users within 15 seconds.
+
+* **⚠️ 20-Second Room Disconnection Auto-Cleanup & Room Event Logs**:
+  * Automatically removes inactive room players who close Chrome tabs or lose connection for over 20 seconds, freeing room slots.
+  * Host status is seamlessly transferred to remaining room members if the host disconnects.
+  * Waiting room lobby displays a **`📢 Room Event Log`** stream tracking player joins (`📢`), leaves (`🚪`), and offline cleanups (`⚠️`).
+
+* **🔑 Room Host Password Bypass for Returning**:
+  * Room hosts returning to their own password-protected room bypass the password prompt on frontend and backend.
+
 * **🐳 Docker Deployment & Data Volume Persistence**:
   * Shell scripts provided: `docker-build.sh` (one-click deployment) and `cleanDBAndRestart.sh` (one-click database wipe & restart).
   * Host volume directory `/root/davinci_pgdata:/var/lib/postgresql` preserves all user accounts and battle history across container rebuilds.
