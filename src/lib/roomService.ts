@@ -1,5 +1,5 @@
 import { pgPool } from './postgres';
-import { initGame, GameData } from './gameLogic';
+import { initGame, GameData, repositionJokerCard } from './gameLogic';
 import { updateUserStats, recordMatchHistory } from './authService';
 
 export interface Room {
@@ -63,6 +63,10 @@ export async function createRoom(data: CreateRoomData): Promise<string> {
   const { name, username, password, maxPlayers = 4, customRoomId } = data;
   if (!username || !username.trim()) {
     throw new Error('未检测到账号，请先注册或登录账号！');
+  }
+
+  if (username.trim() === 'admin') {
+    throw new Error('管理员账号 (admin) 专用于全服数据管理，无建房与切局对战权限！');
   }
 
   const userCheck = await pgPool.query('SELECT 1 FROM users WHERE username = $1', [username.trim()]);
@@ -154,6 +158,10 @@ export async function joinRoom(data: JoinRoomData): Promise<boolean> {
   
   if (!username || !username.trim()) {
     throw new Error('未检测到账号，请先注册或登录账号！');
+  }
+
+  if (username.trim() === 'admin') {
+    throw new Error('管理员账号 (admin) 专用于全服数据管理，无加入房间与切局对战权限！');
   }
 
   // 0. 验证加入者是否为已注册用户
@@ -441,6 +449,36 @@ export async function endGame(roomId: string, winner?: string): Promise<boolean>
   
   console.log(`✅ 房间 ${roomId} 游戏结束，获胜者: ${winner || '未知'}`);
   return true;
+}
+
+// 调整手牌中百搭牌 (-) 的插入摆放位置
+export async function repositionJoker(
+  roomId: string,
+  username: string,
+  cardId: string,
+  targetIndex: number
+): Promise<any> {
+  const gameData = await getGameState(roomId);
+  if (!gameData || !gameData.hands) {
+    throw new Error('游戏状态不存在');
+  }
+
+  const hand = gameData.hands[username];
+  if (!hand) {
+    throw new Error('玩家不在该游戏对局中');
+  }
+
+  const targetCard = hand.find((c: any) => c.id === cardId);
+  if (!targetCard || targetCard.value !== -1) {
+    throw new Error('选中的卡牌不是百搭牌 (-)，无法自定义调整位置');
+  }
+
+  // 调整手牌排序（静默无声更新，绝不清空或泄露日志给对手）
+  const newHand = repositionJokerCard(hand, cardId, targetIndex);
+  gameData.hands[username] = newHand;
+
+  await updateGameState(roomId, gameData.currentTurn, gameData);
+  return gameData;
 }
 
 // Delete room

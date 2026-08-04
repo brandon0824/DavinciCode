@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Users, ArrowRight, Lock, Key, Sun, Moon, ShieldCheck, Sparkles, UserCheck, LogOut, User, Trophy, LogIn, UserPlus } from 'lucide-react';
+import { Plus, Users, ArrowRight, Lock, Key, Sun, Moon, ShieldCheck, Sparkles, UserCheck, LogOut, User, Trophy, LogIn, UserPlus, Crown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -228,6 +228,11 @@ export default function HomePage() {
       return;
     }
 
+    if (currentUser.username === 'admin') {
+      setError('管理员账号 (admin) 专用于全服数据管理，无建房与切局对战权限！');
+      return;
+    }
+
     if (!validateUsername(name)) {
       setError('用户名格式不正确（1-20个字符，支持中文、英文、数字、下划线）');
       return;
@@ -298,6 +303,11 @@ export default function HomePage() {
       return;
     }
 
+    if (currentUser.username === 'admin') {
+      setError('管理员账号 (admin) 专用于全服数据管理，无加入房间与切局对战权限！');
+      return;
+    }
+
     if (!validateUsername(name)) {
       setError('用户名格式不正确（1-20个字符，支持中文、英文、数字、下划线）');
       return;
@@ -348,6 +358,11 @@ export default function HomePage() {
       return;
     }
 
+    if (currentUser.username === 'admin') {
+      setError('管理员账号 (admin) 专用于全服数据管理，无加入房间与切局对战权限！');
+      return;
+    }
+
     const isHost = roomItem.hostUsername === currentUser.username;
 
     // 如果该房间是当前用户创建的（房主），免密码直接重返房间！
@@ -380,6 +395,11 @@ export default function HomePage() {
   const executeJoinRoom = async (targetRoomId: string, pass?: string) => {
     if (!currentUser || !currentUser.username) {
       setError('请先在上方注册或登录账号，登录后方可进入房间！');
+      return;
+    }
+
+    if (currentUser.username === 'admin') {
+      setError('管理员账号 (admin) 专用于全服数据管理，无加入房间与切局对战权限！');
       return;
     }
 
@@ -450,6 +470,18 @@ export default function HomePage() {
                 </div>
 
                 <div className="flex items-center space-x-1 border-l border-slate-200 dark:border-slate-800 pl-1.5 ml-1 shrink-0">
+                  {currentUser.username === 'admin' && (
+                    <Button
+                      onClick={() => router.push('/admin')}
+                      size="sm"
+                      className="text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 h-7 px-2 font-black flex items-center shrink-0 rounded-lg shadow-sm"
+                      title="进入管理员全服控制台"
+                    >
+                      <Crown className="w-3.5 h-3.5 mr-1 fill-current" />
+                      <span>管理后台</span>
+                    </Button>
+                  )}
+
                   <Button
                     onClick={() => router.push('/stats')}
                     variant="ghost"

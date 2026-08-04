@@ -68,6 +68,16 @@ async function setupDatabase() {
     `);
     console.log('✅ Users table verified/created with battle stats.');
 
+    // 0.1 Seed default Admin user ('admin' / 'Brandon' -> Base64: 'QnJhbmRvbg==')
+    const adminPasswordBase64 = Buffer.from('Brandon').toString('base64');
+    await client.query(`
+      INSERT INTO users (username, password_hash, last_login_at)
+      VALUES ('admin', $1, CURRENT_TIMESTAMP)
+      ON CONFLICT (username) 
+      DO UPDATE SET password_hash = EXCLUDED.password_hash;
+    `, [adminPasswordBase64]);
+    console.log("👑 Default Admin user ('admin' / 'Brandon') verified/seeded.");
+
     // 1. Create rooms table
     await client.query(`
       CREATE TABLE IF NOT EXISTS rooms (

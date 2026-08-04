@@ -78,6 +78,22 @@ export function sortCards(cards: Card[]): Card[] {
   return [...normalCards, ...jokerCards];
 }
 
+// 重新调整手牌中某张百搭牌 (-) 的插入摆放位置
+// 普通数字牌 (0-11) 保持相对的升序规则，百搭牌被移动插入到 targetIndex 索引位置
+export function repositionJokerCard(hand: Card[], cardId: string, targetIndex: number): Card[] {
+  const jokerCard = hand.find(c => c.id === cardId && c.value === -1);
+  if (!jokerCard) return hand;
+
+  const otherCards = hand.filter(c => c.id !== cardId);
+
+  // 限制 targetIndex 在 0 到 otherCards.length 范围内
+  const validIndex = Math.max(0, Math.min(targetIndex, otherCards.length));
+
+  const newHand = [...otherCards];
+  newHand.splice(validIndex, 0, jokerCard);
+  return newHand;
+}
+
 // Initialize and deal cards to players
 // 2-3 players: 4 cards each. 4 players: 3 cards each.
 export function dealCards(usernames: string[]): { deck: Card[]; hands: { [username: string]: Card[] } } {

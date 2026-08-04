@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGameState, updateGameState, endGame } from '@/lib/roomService';
+import { getGameState, updateGameState, endGame, repositionJoker } from '@/lib/roomService';
 
 // Fetch the current game state
 export async function GET(
@@ -20,7 +20,7 @@ export async function GET(
   }
 }
 
-// Update the game state
+// Update the game state or perform specific game actions
 export async function POST(
   request: NextRequest,
   { params }: { params: { roomId: string } }
@@ -28,7 +28,16 @@ export async function POST(
   try {
     const { roomId } = params;
     const body = await request.json();
-    const { gameState } = body;
+    const { action, username, cardId, targetSlotIndex, gameState } = body;
+
+    // 自定义调整百搭牌 (-) 放置位置
+    if (action === 'reposition_joker') {
+      if (!username || !cardId || typeof targetSlotIndex !== 'number') {
+        return NextResponse.json({ error: '调整百搭牌位置参数不完整' }, { status: 400 });
+      }
+      const updatedState = await repositionJoker(roomId, username, cardId, targetSlotIndex);
+      return NextResponse.json({ success: true, gameState: updatedState });
+    }
 
     if (!gameState) {
       return NextResponse.json(
@@ -46,10 +55,10 @@ export async function POST(
     }
 
     return NextResponse.json({ success: true, message: '游戏状态更新成功' });
-  } catch (error) {
+  } catch (error: any) {
     console.error('更新游戏状态失败:', error);
     return NextResponse.json(
-      { error: '更新游戏状态失败' },
+      { error: error.message || '更新游戏状态失败' },
       { status: 500 }
     );
   }

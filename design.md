@@ -117,11 +117,15 @@ Follows clean separation of concerns:
 
 ## 🔒 Core Logic Modules & Key Implementations
 
-1. **🔑 Mandatory Registration & Authentication Gatekeeper**:
-   - Enforces user login validation prior to room creation or entry. Both frontend UI and backend `roomService.ts` (`SELECT 1 FROM users WHERE username = $1`) verify account existence in PostgreSQL, blocking unauthenticated users from bypassing login.
-2. **🃏 Black & White Wildcard Joker (`-`) System**:
+1. **🔑 Mandatory Registration, Base64 Encryption & Gatekeeper**:
+   - Enforces user login validation prior to room creation or entry. Passwords are encrypted via Base64 (`Buffer.from(password).toString('base64')`). Both frontend and backend verify account existence in PostgreSQL.
+2. **👑 System Admin Account (`admin` / `Brandon`) & Exclusive Management Dashboard (`/admin`)**:
+   - Database setup script pre-seeds default admin account `admin` with password `Brandon` (Base64: `QnJhbmRvbg==`).
+   - Dedicated `/admin` dashboard accessible exclusively by `admin`; public leaderboard GET `/api/stats` filters out `admin` user.
+   - Permission Isolation: `admin` is blocked from creating or joining rooms on both frontend and backend.
+3. **🃏 Black & White Wildcard Joker (`-`) System & Free Insertion Placement**:
    - Deck size expanded from 24 to **26 cards** (including 1 Black Wildcard Joker `-` and 1 White Wildcard Joker `-`).
-   - Standard cards (0-11) auto-sort in ascending order. Wildcards (`-`) display on the right.
+   - Standard cards (0-11) auto-sort in ascending order. Wildcards (`-`) can be **freely inserted into any slot index** (far left, between cards, or far right) when drawn or during turn via interactive "`⇄ Reposition`" controls.
    - Guessing dialog includes a dedicated `- (Wildcard Joker)` decision button.
 3. **🎉 Game Over Settlement Modal without Auto-Redirect**:
    - Discloses all players' final hand card values and wildcards upon game completion.

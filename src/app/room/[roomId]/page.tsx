@@ -80,6 +80,34 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   const [turnWarningMsg, setTurnWarningMsg] = useState<string>('');
   const lastTurnKeyRef = useRef<string>('');
 
+  // Wildcard Joker (-) Repositioning State
+  const [selectedJokerCard, setSelectedJokerCard] = useState<GameCard | null>(null);
+
+  const submitJokerReposition = async (cardId: string, slotIndex: number) => {
+    try {
+      const res = await fetch(`/api/rooms/${roomId}/game`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reposition_joker',
+          username: playerName,
+          cardId,
+          targetSlotIndex: slotIndex
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.gameState) {
+          setGameState(data.gameState);
+        }
+      }
+    } catch (e) {
+      console.error('调整百搭牌位置失败:', e);
+    } finally {
+      setSelectedJokerCard(null);
+    }
+  };
+
   // Monitor current turn and trigger 30s / 60s / 90s warning notifications
   useEffect(() => {
     if (!gameState || room?.status !== 'playing') {
@@ -155,6 +183,12 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   useEffect(() => {
     if (!playerName) {
       setError('用户名不能为空');
+      setIsLoading(false);
+      return;
+    }
+
+    if (playerName === 'admin') {
+      setError('管理员账号 (admin) 专用于全服数据管理，无加入房间与切局对战权限！');
       setIsLoading(false);
       return;
     }
@@ -341,6 +375,10 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     };
 
     await saveGameState(updatedGameState);
+
+    if (card.value === -1) {
+      setSelectedJokerCard(card);
+    }
   };
 
   // 2. Submit Guess
@@ -835,10 +873,19 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                         {getCardDisplayValue(card.value)}
                       </span>
                       
-                      {card.isRevealed && (
+                      {card.isRevealed ? (
                         <div className="absolute -bottom-2 bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400 text-[8px] px-1.5 py-0.5 rounded-full font-bold border border-red-200 dark:border-red-900/50">
                           公开
                         </div>
+                      ) : card.value === -1 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedJokerCard(card)}
+                          className="absolute -bottom-2 bg-amber-500 hover:bg-amber-600 text-slate-950 text-[8px] px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider shadow-sm flex items-center space-x-0.5 active:scale-[0.96] transition-transform z-10"
+                          title="点击微调此百搭牌在手牌中的插入位置"
+                        >
+                          <span>⇄ 位置</span>
+                        </button>
                       )}
                     </div>
                   );
@@ -1100,6 +1147,64 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
           )}
         </AnimatePresence>
 
+        {/* Modal: Joker Reposition Dialog */}
+        <AnimatePresence>
+          {selectedJokerCard && (
+            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+                className="bg-white dark:bg-slate-900 border-2 border-amber-400/80 dark:border-amber-500/80 text-slate-800 dark:text-slate-100 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4"
+              >
+                <div className="flex items-center space-x-3 text-amber-500">
+                  <Sparkles className="w-6 h-6 animate-pulse" />
+                  <h3 className="text-lg font-black text-slate-800 dark:text-slate-100">
+                    任意百搭牌【-】插牌位置设定
+                  </h3>
+                </div>
+                
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  按照《达芬奇密码》官方规则，抽到或持有的百搭牌可以插入到您手牌中的<strong className="text-amber-600 dark:text-amber-400 font-black">任意位置</strong>（以此混淆对手猜测）：
+                </p>
+
+                <div className="grid grid-cols-2 gap-2.5 pt-1">
+                  {Array.from({ length: (gameState?.hands[playerName!] || []).length }, (_, slotIdx) => (
+                    <button
+                      key={slotIdx}
+                      type="button"
+                      onClick={() => submitJokerReposition(selectedJokerCard.id, slotIdx)}
+                      className="p-3 rounded-2xl border-2 font-bold text-xs flex flex-col items-center justify-center space-y-1 bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 active:scale-[0.96] transition-transform shadow-sm"
+                    >
+                      <span className="text-amber-700 dark:text-amber-300 font-extrabold text-sm">
+                        第 {slotIdx + 1} 个位置
+                      </span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                        {slotIdx === 0 
+                          ? '(最左侧)' 
+                          : slotIdx === (gameState?.hands[playerName!] || []).length - 1 
+                            ? '(最右侧)' 
+                            : `(第 ${slotIdx} 与 ${slotIdx + 1} 张牌之间)`}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="pt-2">
+                  <Button
+                    onClick={() => setSelectedJokerCard(null)}
+                    variant="outline"
+                    className="w-full rounded-xl text-xs bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800"
+                  >
+                    取消
+                  </Button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
         {/* Global Footer with Real-time Online Counter */}
         <Footer />
       </div>
@@ -1334,6 +1439,64 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Modal: Joker Reposition Dialog */}
+      <AnimatePresence>
+        {selectedJokerCard && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 10 }}
+              transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+              className="bg-white dark:bg-slate-900 border-2 border-amber-400/80 dark:border-amber-500/80 text-slate-800 dark:text-slate-100 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4"
+            >
+              <div className="flex items-center space-x-3 text-amber-500">
+                <Sparkles className="w-6 h-6 animate-pulse" />
+                <h3 className="text-lg font-black text-slate-800 dark:text-slate-100">
+                  任意百搭牌【-】插牌位置设定
+                </h3>
+              </div>
+              
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                按照《达芬奇密码》官方规则，抽到或持有的百搭牌可以插入到您手牌中的<strong className="text-amber-600 dark:text-amber-400 font-black">任意位置</strong>（以此混淆对手猜测）：
+              </p>
+
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                {Array.from({ length: (gameState?.hands[playerName!] || []).length }, (_, slotIdx) => (
+                  <button
+                    key={slotIdx}
+                    type="button"
+                    onClick={() => submitJokerReposition(selectedJokerCard.id, slotIdx)}
+                    className="p-3 rounded-2xl border-2 font-bold text-xs flex flex-col items-center justify-center space-y-1 bg-amber-50/80 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 active:scale-[0.96] transition-transform shadow-sm"
+                  >
+                    <span className="text-amber-700 dark:text-amber-300 font-extrabold text-sm">
+                      第 {slotIdx + 1} 个位置
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                      {slotIdx === 0 
+                        ? '(最左侧)' 
+                        : slotIdx === (gameState?.hands[playerName!] || []).length - 1 
+                          ? '(最右侧)' 
+                          : `(第 ${slotIdx} 与 ${slotIdx + 1} 张牌之间)`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="pt-2">
+                <Button
+                  onClick={() => setSelectedJokerCard(null)}
+                  variant="outline"
+                  className="w-full rounded-xl text-xs bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800"
+                >
+                  取消
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Global Footer with Real-time Online Counter */}
       <Footer />

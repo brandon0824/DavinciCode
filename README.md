@@ -10,14 +10,20 @@ Language Options:
 
 ## ✨ System Features & Highlights
 
-* **🔑 Mandatory User Registration & Secure Authentication (Bcrypt)**:
+* **🔑 Mandatory User Registration & Secure Authentication (Base64)**:
   * **Login Gatekeeper**: Users must register or log in to a valid user account before creating or joining any room. Both frontend UI and backend PostgreSQL database strictly enforce user identity verification.
-  * **Password Hashing**: Employs standard `bcryptjs` salted password hashing stored securely inside PostgreSQL. No plain text passwords are ever stored.
+  * **Base64 Password Encryption**: Employs Base64 password encoding (`Buffer.from(password).toString('base64')`) stored in PostgreSQL, combining security with high performance while maintaining backwards compatibility.
   * **Session Persistence**: User sessions automatically persist in browser `sessionStorage`, avoiding repeated logins on page refresh.
 
-* **🃏 Black & White Wildcard Joker (`-`) Card Rules**:
-  * **26-Card Full Deck**: Contains 12 Black cards (0-11) + 12 White cards (0-11) plus **1 Black Wildcard Joker (`-`)** and **1 White Wildcard Joker (`-`)**.
-  * **Special Visuals & Decision Buttons**: Wildcard Jokers in hand feature golden `-` badges with a `Wildcard` indicator. The guessing dialog includes a dedicated `- (Wildcard Joker)` decision button.
+* **👑 System Admin User & Exclusive Management Dashboard (`/admin`)**:
+  * **Pre-seeded Admin Account**: Pre-seeded default admin account **`admin`** (password: **`****`**);
+  * **Leaderboard Exclusion**: Admin user is automatically filtered out from public leaderboards (`/stats`), keeping ranks pure for genuine players;
+  * **Exclusive Admin Dashboard (`/admin`)**: Accessible exclusively by `admin`. Features responsive data tables and summary metrics displaying all registered users: Username, Wins/Losses/Total Games, Win Rate %, 15s Heartbeat Online Status (`🟢 Online / ⚪ Offline`), Registration Time, and Last Active Time.
+  * **Permission Isolation Guard**: The `admin` user is dedicated to server management and has zero room creation or game battle permissions. Attempting to create or join rooms triggers automatic error prevention.
+
+* **🃏 Black & White Wildcard Jokers (`-` Cards) & Free Position Placement**:
+  * **26 Cards Total Deck**: Black 0-11 (12 cards) + White 0-11 (12 cards), plus **1 Black Wildcard Joker `-`** and **1 White Wildcard Joker `-`**.
+  * **Free Slot Placement & Position Adjustments**: Following official DaVinci Code rules, when drawing or holding a Wildcard Joker (`-`), players can **freely choose its insertion slot** anywhere in their hand (far left, between cards, or far right) to trick opponents. Provides interactive "`⇄ Reposition`" controls on hand cards.
 
 * **🏆 Personal Battle History & Global Leaderboard (`/stats`)**:
   * Permanently records player statistics (`total_games`, `total_wins`, `total_losses`) in the `users` table and match details in `match_history`.
@@ -60,7 +66,7 @@ Language Options:
 * **Core Framework**: Next.js 14 (App Router)
 * **Frontend UI & Animations**: React 18, Tailwind CSS, Framer Motion, Lucide React
 * **Backend API**: Next.js Route Handlers (RESTful APIs)
-* **Encryption**: Bcryptjs (Salted password hashing)
+* **Encryption**: Base64 Encryption (High performance password storage)
 * **Database**: PostgreSQL (with `pg` connection pool & JSONB data storage)
 * **Containerization**: Docker (Embedded PostgreSQL 15 & automated shell deployment scripts)
 
@@ -73,8 +79,8 @@ After allowing inbound TCP port `5432` in your server firewall / cloud security 
 - **Host**: Your Linux server's public IPv4 address
 - **Port**: `5432`
 - **Database**: `davinci`
-- **Username**: `root`
-- **Password**: `Shithappen0824`
+- **Username**: `****`
+- **Password**: `****`
 
 ---
 

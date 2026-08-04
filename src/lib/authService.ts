@@ -31,7 +31,19 @@ export interface LeaderboardItem {
   rank: number;
 }
 
-// 注册新用户 (密码通过 bcrypt 加盐哈希加密)
+export interface AdminUserItem {
+  id: number;
+  username: string;
+  totalGames: number;
+  totalWins: number;
+  totalLosses: number;
+  winRate: number; // 胜率 (%)
+  isOnline: boolean; // 基于 15 秒心跳的实时在线状态
+  createdAt: Date;
+  lastLoginAt?: Date;
+}
+
+// 注册新用户 (密码通过 Base64 加密算法)
 export async function registerUser(username: string, password: string): Promise<User> {
   const trimmedUsername = username.trim();
   const trimmedPassword = password.trim();
@@ -50,8 +62,8 @@ export async function registerUser(username: string, password: string): Promise<
     throw new Error('该用户名已被注册，请直接登录或换一个用户名');
   }
 
-  // 2. 加密密码
-  const passwordHash = await bcrypt.hash(trimmedPassword, 10);
+  // 2. 加密密码 (使用 Base64 算法加密)
+  const passwordHash = Buffer.from(trimmedPassword).toString('base64');
 
   // 3. 写入数据库 (同时设 last_login_at 为当前时间)
   const insertRes = await pgPool.query(
@@ -75,7 +87,7 @@ export async function registerUser(username: string, password: string): Promise<
   };
 }
 
-// 用户登录 (比对 bcrypt 加密哈希)
+// 用户登录 (比对 Base64 加密密码，兼容模式支持旧哈希)
 export async function loginUser(username: string, password: string): Promise<User> {
   const trimmedUsername = username.trim();
   const trimmedPassword = password.trim();
@@ -92,8 +104,13 @@ export async function loginUser(username: string, password: string): Promise<Use
 
   const row = res.rows[0];
 
-  // 2. 比对加密密码
-  const isMatch = await bcrypt.compare(trimmedPassword, row.password_hash);
+  // 2. 比对加密密码 (Base64 加密算法)
+  const base64Input = Buffer.from(trimmedPassword).toString('base64');
+  let isMatch = base64Input === row.password_hash;
+  if (!isMatch && row.password_hash.startsWith('$2')) {
+    isMatch = await bcrypt.compare(trimmedPassword, row.password_hash);
+  }
+
   if (!isMatch) {
     throw new Error('用户名或密码错误');
   }
@@ -217,12 +234,13 @@ export async function getUserMatchHistory(username: string): Promise<MatchHistor
   });
 }
 
-// 获取全服胜率排行榜 (下表：胜率从高到低，胜率相同时按胜场排序)
+// 获取全服胜率排行榜 (下表：胜率从高到低，胜率相同时按胜场排序，剔除 admin 管理员)
 export async function getLeaderboard(): Promise<LeaderboardItem[]> {
   const res = await pgPool.query(
     `SELECT id, username, total_games, total_wins, total_losses,
             CASE WHEN total_games = 0 THEN 0 ELSE ROUND((total_wins::numeric / total_games::numeric) * 100, 1) END as win_rate
      FROM users
+     WHERE username != 'admin'
      ORDER BY (CASE WHEN total_games = 0 THEN 0 ELSE (total_wins::numeric / total_games::numeric) END) DESC,
               total_wins DESC,
               total_games DESC,
@@ -236,5 +254,28 @@ export async function getLeaderboard(): Promise<LeaderboardItem[]> {
     totalLosses: row.total_losses || 0,
     winRate: Number(row.win_rate) || 0,
     rank: index + 1
+  }));
+}
+
+// 获取全服所有注册用户及其胜场/胜率/在线状态/注册与最后在线时间 (仅限管理员)
+export async function getAdminAllUsers(): Promise<AdminUserItem[]> {
+  const res = await pgPool.query(
+    `SELECT id, username, total_games, total_wins, total_losses, created_at, last_login_at,
+            (CASE WHEN total_games = 0 THEN 0 ELSE ROUND((total_wins::numeric / total_games::numeric) * 100, 1) END) as win_rate,
+            (CASE WHEN last_login_at >= NOW() - INTERVAL '15 seconds' THEN true ELSE false END) as is_online
+     FROM users
+     ORDER BY created_at DESC`
+  );
+
+  return res.rows.map(row => ({
+    id: row.id,
+    username: row.username,
+    totalGames: row.total_games || 0,
+    totalWins: row.total_wins || 0,
+    totalLosses: row.total_losses || 0,
+    winRate: Number(row.win_rate) || 0,
+    isOnline: Boolean(row.is_online),
+    createdAt: new Date(row.created_at),
+    lastLoginAt: row.last_login_at ? new Date(row.last_login_at) : undefined
   }));
 }
