@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Users, ArrowRight, Lock, Key, Sun, Moon, ShieldCheck, Sparkles, UserCheck, LogOut, User, Trophy, LogIn, UserPlus, Crown } from 'lucide-react';
+import { Plus, Users, ArrowRight, Lock, Key, Sun, Moon, ShieldCheck, Sparkles, UserCheck, LogOut, User, Trophy, LogIn, UserPlus, Crown, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -37,6 +37,7 @@ export default function HomePage() {
   const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
   const [authUsername, setAuthUsername] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
   const [isAuthSubmitting, setIsAuthSubmitting] = useState(false);
 
   const [name, setName] = useState('');
@@ -585,13 +586,28 @@ export default function HomePage() {
                       <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 uppercase tracking-wider">
                         密码 (加密保存)
                       </label>
-                      <Input
-                        type="password"
-                        placeholder="至少4个字符"
-                        value={authPassword}
-                        onChange={(e) => setAuthPassword(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl"
-                      />
+                      <div className="relative">
+                        <Input
+                          type={showAuthPassword ? 'text' : 'password'}
+                          placeholder="至少4个字符"
+                          value={authPassword}
+                          onChange={(e) => setAuthPassword(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-xl pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAuthPassword(!showAuthPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-1 flex items-center justify-center rounded-lg"
+                          title={showAuthPassword ? '隐藏密码' : '显示密码'}
+                          tabIndex={-1}
+                        >
+                          {showAuthPassword ? (
+                            <EyeOff className="w-4 h-4" strokeWidth={2} />
+                          ) : (
+                            <Eye className="w-4 h-4" strokeWidth={2} />
+                          )}
+                        </button>
+                      </div>
                     </div>
 
                     <Button
@@ -798,7 +814,13 @@ export default function HomePage() {
               </p>
             </CardHeader>
             <CardContent>
-              {isLoadingRooms ? (
+              {!currentUser ? (
+                <div className="text-center py-12">
+                  <Lock className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-4" strokeWidth={1.5} />
+                  <p className="text-slate-400 dark:text-slate-500 font-bold mb-1 text-sm">请先登录账号</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-600">登录账号后方可查看与加入可用房间</p>
+                </div>
+              ) : isLoadingRooms ? (
                 <div className="text-center py-10">
                   <div className="w-8 h-8 border-2 border-slate-300 dark:border-slate-700 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                   <p className="text-slate-400 dark:text-slate-500 text-xs">加载列表数据中...</p>
@@ -837,7 +859,7 @@ export default function HomePage() {
                 <div className="text-center py-12">
                   <Users className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-4" strokeWidth={1.5} />
                   <p className="text-slate-400 dark:text-slate-500 font-bold mb-1 text-sm">暂无活跃房间</p>
-                  <p className="text-xs text-slate-400 dark:text-slate-600">填入昵称，创建一个新房间开始对局吧！</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-600">创建一个新房间开始对局吧！</p>
                 </div>
               )}
             </CardContent>
