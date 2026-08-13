@@ -16,19 +16,20 @@ export async function GET(request: NextRequest) {
       ).catch(() => {});
     }
 
-    // 统计过去 15 秒内有心跳更新的活跃账号数 (客户端 Footer 每 4-5 秒发送一次心跳)
+    // 统计过去 15 秒内有心跳更新的活跃账号数 (客户端 Footer 每 4-5 秒发送一次心跳)，不包含 admin 管理员账号
     const res = await pgPool.query(
       `SELECT COUNT(DISTINCT username) AS online_count
        FROM users 
-       WHERE last_login_at >= NOW() - INTERVAL '15 seconds'`
+       WHERE last_login_at >= NOW() - INTERVAL '15 seconds'
+         AND LOWER(username) != 'admin'`
     );
     
     let count = parseInt(res.rows[0]?.online_count || '0', 10);
-    if (count < 1) count = 1;
+    if (isNaN(count) || count < 0) count = 0;
 
     return NextResponse.json({ onlineCount: count });
   } catch (error) {
     console.error('获取在线人数失败:', error);
-    return NextResponse.json({ onlineCount: 1 });
+    return NextResponse.json({ onlineCount: 0 });
   }
 }

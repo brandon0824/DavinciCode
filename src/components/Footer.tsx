@@ -8,7 +8,7 @@ interface FooterProps {
 }
 
 export default function Footer({ initialCount }: FooterProps) {
-  const [onlineCount, setOnlineCount] = useState<number>(initialCount || 1);
+  const [onlineCount, setOnlineCount] = useState<number>(initialCount ?? 0);
 
   const fetchOnlineCount = async () => {
     try {
