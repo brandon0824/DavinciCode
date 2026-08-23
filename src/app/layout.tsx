@@ -1,9 +1,15 @@
+import type { Metadata } from "next";
 import "./globals.css";
 
-export const metadata = {
-  title: '达芬奇密码 - 游戏房间管理系统',
-  description: '一个现代化的游戏房间管理系统',
-}
+export const metadata: Metadata = {
+  title: 'Davinci Code',
+  description: 'Davinci Code Game',
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
+};
 
 export default function RootLayout({
   children,
