@@ -13,9 +13,9 @@ docker rmi davinci-code:latest 2>/dev/null || true
 echo "🔨 步骤 4/5: 正在重新构建最新 Docker 镜像..."
 docker build -t davinci-code:latest .
 
-echo "🚀 步骤 5/5: 正在启动新 Docker 容器 (Web端口: 60824, PG外网端口: 5432, 挂载宿主机持久化目录 /root/davinci_pgdata)..."
+echo "🚀 步骤 5/5: 正在启动新 Docker 容器 (Web端口仅本地: 127.0.0.1:60824, PG外网端口: 5432, 挂载宿主机持久化目录 /root/davinci_pgdata)..."
 docker run -d \
-  -p 60824:60824 \
+  -p 127.0.0.1:60824:60824 \
   -p 5432:5432 \
   -v /root/davinci_pgdata:/var/lib/postgresql \
   --name davinci-game \
