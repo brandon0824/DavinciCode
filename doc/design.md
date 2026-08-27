@@ -143,7 +143,7 @@ Follows clean separation of concerns:
 8. **30-Second Multiples Inaction Reminder**:
    - Triggers an active timer during the player's turn. Inaction exceeding 30s, 60s, 90s... prompts an animated warning toast.
 9. **Containerization & Automatic DB Setup (`Dockerfile` & `entrypoint.sh`)**:
-   - Multi-stage Docker image runs Next.js as a non-root `node` process while PostgreSQL is managed by the entrypoint. Data persistence is ensured via the host directory mount configured by the required `PG_DATA_DIR` setting.
+   - Docker Compose runs Next.js as a non-root `node` process and PostgreSQL in its official separate service. Data persistence is ensured via the host directory mount configured by `PG_DATA_DIR`.
 
 ---
 

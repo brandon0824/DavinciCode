@@ -148,7 +148,7 @@ Language / 语言选择:
 8. **回合 30 秒倍数超时提醒机制**：
    - 处于自己回合（`isMyTurn === true`）时触发独立计时器，当无操作停留满 30s、60s、90s... 时，自动弹窗与浮动 Toast 醒目提醒玩家做出选择。
 9. **容器化与自动化建表部署 (`Dockerfile` & `entrypoint.sh`)**：
-   - 使用多阶段 Docker 构建，Next.js 以非 root `node` 用户运行，PostgreSQL 由 `entrypoint.sh` 管理并执行 `node scripts/setup-pg.js` 建表。通过 `.env.docker` 中必填的 `PG_DATA_DIR` 配置宿主机挂载目录，确保物理存储持久化。
+   - 使用多阶段 Docker 构建，Next.js 以非 root `node` 用户运行；PostgreSQL 使用官方独立容器，由 Docker Compose 编排并通过 `PG_DATA_DIR` 持久化。应用容器启动时执行 `node scripts/setup-pg.js` 建表。
 
 ---
 

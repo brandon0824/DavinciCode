@@ -369,6 +369,6 @@ WHERE room_id = $room_id AND version = $expected_version;
 
 ## 当前实施状态（2026-08-27）
 
-本文件是持续实施清单。当前状态为：P0、P1、P2 的代码目标均已完成；认证密码最低长度为 7 个字符。P2 已完成多阶段 Docker、健康检查、Node 非 root 运行、四个主要页面的 Server Component 外壳、请求和数据库延迟指标、错误上报 Webhook、可访问性与动效收敛，并已在桌面 Chromium 和移动端 Chromium 完成 10/10 Playwright 集成测试。Docker PostgreSQL 的正式迁移入口已确定为 `scripts/setup-pg.js`，`supabase_schema.sql` 仅保留为兼容参考脚本。
+本文件是持续实施清单。当前状态为：P0、P1、P2 的代码目标均已完成；认证密码最低长度为 7 个字符。P2 已完成多阶段 Docker 应用镜像、Docker Compose 独立 PostgreSQL 服务、健康检查、Node 非 root 运行、四个主要页面的 Server Component 外壳、请求和数据库延迟指标、错误上报 Webhook、可访问性与动效收敛，并已在桌面 Chromium 和移动端 Chromium 完成 10/10 Playwright 集成测试。Docker PostgreSQL 的正式迁移入口已确定为 `scripts/setup-pg.js`，`supabase_schema.sql` 仅保留为兼容参考脚本。
 
 外部 PostgreSQL 访问验收：Docker 映射宿主机 `5432`，容器 PostgreSQL 监听所有外部接口；当前不启用数据库 TLS，访问由安全组/防火墙、强密码和最小权限账号保障。部署时必须限制服务器或云安全组的 TCP `5432` 来源。

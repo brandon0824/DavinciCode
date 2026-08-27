@@ -1,6 +1,6 @@
 # DaVinci Code Online Multiplayer Board Game
 
-This is a real-time online multiplayer implementation of the classic **DaVinci Code (Coda)** board game, built using **Next.js 14 App Router + Tailwind CSS + Framer Motion + PostgreSQL**. The system supports local development execution, Serverless deployment, and Docker containerized one-click deployment (with host directory volume persistence and embedded lightweight PostgreSQL 15 database).
+This is a real-time online multiplayer implementation of the classic **DaVinci Code (Coda)** board game, built using **Next.js 14 App Router + Tailwind CSS + Framer Motion + PostgreSQL**. Docker deployment uses separate Next.js application and PostgreSQL 15 containers managed by Docker Compose.
 
 Language Options:
 - [English Documentation](README.md)
@@ -75,7 +75,7 @@ Project Documents:
 * **Backend API**: Next.js Route Handlers (RESTful APIs)
 * **Password hashing**: bcrypt with legacy hash migration
 * **Database**: PostgreSQL (with `pg` connection pool & JSONB data storage)
-* **Containerization**: Docker (Embedded PostgreSQL 15 & automated shell deployment scripts)
+* **Containerization**: Docker Compose (separate Next.js and PostgreSQL 15 services)
 
 ---
 
@@ -106,9 +106,9 @@ PG_DATA_DIR=/root/davinci_pgdata
 
 `ADMIN_PASSWORD` is only the web admin login password. Docker PostgreSQL uses fixed credentials `root` / `brandon_pgdb`.
 
-The Docker PostgreSQL instance listens on all interfaces and the scripts map port `5432` to the host. Restrict access with your server firewall or cloud security group.
+The Compose PostgreSQL service listens on all interfaces and maps port `5432` to the host; the app binds to `127.0.0.1:60824`. Restrict database access with your server firewall or cloud security group.
 
-Packaged with Node.js runtime and embedded PostgreSQL database:
+Docker Compose runs separate Node.js application and PostgreSQL database services:
 
 1. **Run Deployment Script**:
    ```bash
@@ -119,7 +119,7 @@ Packaged with Node.js runtime and embedded PostgreSQL database:
    chmod +x cleanDBAndRestart.sh && ./cleanDBAndRestart.sh
    ```
 3. **Access Game**:
-   Open browser at `http://<SERVER_IP>:60824` to play!
+   Open `http://127.0.0.1:60824` on the server, or use the domain configured through Nginx. The app port binds to localhost by default.
 
 ---
 

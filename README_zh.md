@@ -1,6 +1,6 @@
 # 达芬奇密码 (DaVinci Code) 在线多人桌游
 
-这是一个支持实时多人的“达芬奇密码”在线桌游系统，采用 **Next.js 14 App Router + Tailwind CSS + Framer Motion + PostgreSQL** 全栈技术开发。系统不仅支持本地开发运行，还完美适配 Serverless 部署与 Docker 容器化一键部署（包含宿主机持久化数据挂载与内置轻量 PostgreSQL 服务）。
+这是一个支持实时多人的“达芬奇密码”在线桌游系统，采用 **Next.js 14 App Router + Tailwind CSS + Framer Motion + PostgreSQL** 全栈技术开发。Docker 部署使用独立的 Next.js 应用容器和 PostgreSQL 15 数据库容器。
 
 Language / 语言选择:
 - [English Documentation](README.md)
@@ -75,7 +75,7 @@ Language / 语言选择:
 * **后端 API**：Next.js Route Handlers (RESTful 无状态 API)
 * **密码哈希**：bcrypt，兼容旧哈希自动迁移
 * **数据库**：PostgreSQL (配合 `pg` 连接池与 JSONB 二进制大对象存储)
-* **容器化**：Docker (内置 PostgreSQL 15 与自动化 Shell 部署脚本)
+* **容器化**：Docker Compose（Next.js 应用与 PostgreSQL 15 分离部署）
 
 ---
 
@@ -106,11 +106,11 @@ PG_DATA_DIR=/root/davinci_pgdata
 
 `ADMIN_PASSWORD` 仅用于网页管理员登录。Docker PostgreSQL 使用固定连接信息：用户名 `root`，密码 `brandon_pgdb`。
 
-Docker 内 PostgreSQL 默认监听所有网络接口，脚本会将容器 `5432` 端口映射到宿主机。请通过服务器防火墙或云安全组限制访问来源。
+Docker Compose 的 PostgreSQL 服务监听所有网络接口，并将容器 `5432` 端口映射到宿主机；应用服务仅绑定本机 `127.0.0.1:60824`。请通过服务器防火墙或云安全组限制数据库访问来源。
 
-我们在 Docker 镜像中封装了 Next.js 运行环境与内置 PostgreSQL 数据库：
+Docker Compose 使用独立的 Next.js 应用服务和 PostgreSQL 数据库服务：
 
-1. **一键运行部署脚本**：
+1. **一键运行部署脚本**（内部通过 Docker Compose 启动应用和数据库两个服务）：
    ```bash
    chmod +x docker-build.sh && ./docker-build.sh
    ```
@@ -119,7 +119,7 @@ Docker 内 PostgreSQL 默认监听所有网络接口，脚本会将容器 `5432`
    chmod +x cleanDBAndRestart.sh && ./cleanDBAndRestart.sh
    ```
 3. **访问游戏**：
-   打开浏览器访问 `http://<服务器IP>:60824` 即可开始游玩！
+   在服务器本机访问 `http://127.0.0.1:60824`，或通过 Nginx 配置的域名访问。应用端口默认仅绑定本机。
 
 ---
 

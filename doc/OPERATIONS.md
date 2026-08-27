@@ -15,7 +15,7 @@ npm run db:setup
 
 ## 健康检查
 
-运行 Docker 脚本前必须在根目录 `.env.docker` 中配置非空的 `ADMIN_PASSWORD` 和 `PG_DATA_DIR`，脚本不会读取 `.env.local`。`ADMIN_PASSWORD` 仅用于网页管理员登录；Docker PostgreSQL 固定使用 `root` / `brandon_pgdb`。Docker PostgreSQL 对所有网络接口开放，必须通过服务器防火墙或云安全组限制 TCP `5432` 来源。本地 Node.js 启动则直接使用根目录 `.env.local` 中的数据库配置。用户及管理员密码最低长度为 7 个字符。
+运行 Docker 脚本前必须在根目录 `.env.docker` 中配置非空的 `ADMIN_PASSWORD` 和 `PG_DATA_DIR`，脚本不会读取 `.env.local`。脚本通过 Docker Compose 启动独立的 `app` 与 `postgres` 服务。`ADMIN_PASSWORD` 仅用于网页管理员登录；Docker PostgreSQL 固定使用 `root` / `brandon_pgdb`。PostgreSQL 对所有网络接口开放并映射宿主机 TCP `5432`，必须通过服务器防火墙或云安全组限制来源。本地 Node.js 启动则直接使用根目录 `.env.local` 中的数据库配置。用户及管理员密码最低长度为 7 个字符。
 
 本地 macOS 可在项目根目录直接执行 `./localStart.sh`，脚本会依次安装依赖、初始化数据库并启动开发服务。
 

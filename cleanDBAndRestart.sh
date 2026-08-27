@@ -17,14 +17,11 @@ if [[ -z "${ADMIN_PASSWORD:-}" || -z "${PG_DATA_DIR:-}" ]]; then
 fi
 
 DATA_DIR="${PG_DATA_DIR}"
-CONTAINER_NAME="${CONTAINER_NAME:-davinci-code}"
-
 echo "⚠️ 正在彻底清空数据库并重新构建启动应用..."
 
 # 1. 停止运行中的容器
-echo "🛑 步骤 1/3: 停止并删除运行中的容器 (${CONTAINER_NAME})..."
-docker stop "${CONTAINER_NAME}" 2>/dev/null || true
-docker rm "${CONTAINER_NAME}" 2>/dev/null || true
+echo "🛑 步骤 1/3: 停止并删除 Docker Compose 服务..."
+docker compose --env-file "${SCRIPT_DIR}/.env.docker" -f "${SCRIPT_DIR}/docker-compose.yml" down --remove-orphans || true
 
 # 2. 删除宿主机上的数据持久化目录
 echo "🗑️ 步骤 2/3: 清空宿主机数据库持久化目录 (${DATA_DIR})..."
