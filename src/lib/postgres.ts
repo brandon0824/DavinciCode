@@ -1,12 +1,25 @@
 import { Pool } from 'pg';
+import { recordDatabaseQuery } from './metrics';
 
 export const pgPool = new Pool({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432', 10),
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'Shithappen0824',
+  password: process.env.DB_PASSWORD || 'root',
   database: process.env.DB_NAME || 'davinci',
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
 });
+
+// Capture query latency centrally so API handlers do not need repetitive timing code.
+const rawQuery = (pgPool as any).query.bind(pgPool);
+(pgPool as any).query = (...args: any[]) => {
+  const startedAt = Date.now();
+  const result = rawQuery(...args);
+  if (result && typeof result.finally === 'function') {
+    return result.then((value: unknown) => { recordDatabaseQuery(Date.now() - startedAt); return value; }, (error: unknown) => { recordDatabaseQuery(Date.now() - startedAt, true); throw error; });
+  }
+  recordDatabaseQuery(Date.now() - startedAt);
+  return result;
+};

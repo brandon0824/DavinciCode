@@ -10,7 +10,7 @@ Language Options:
 
 ## 🏗️ Overall System Architecture
 
-This project adopts a **Serverless-friendly** and **self-contained** full-stack architecture. Frontend views and backend API routes are implemented within the Next.js 14 (App Router) framework. Data is persisted in a PostgreSQL relational database, and user passwords are encrypted using Bcrypt salted hashing. The system is containerized via Docker and mapped to port **60824**, with host data volume mounting at `/root/davinci_pgdata` ensuring data persistence.
+This project adopts a **Serverless-friendly** and **self-contained** full-stack architecture. Frontend views and backend API routes are implemented within the Next.js 14 (App Router) framework. Data is persisted in a PostgreSQL relational database, and user passwords are stored as salted Bcrypt hashes. The system is containerized via Docker and mapped to port **60824**, with the host PostgreSQL volume controlled by the required `PG_DATA_DIR` setting in `.env.docker`.
 
 ```
 +----------------------------------------------------------------+
@@ -117,10 +117,10 @@ Follows clean separation of concerns:
 
 ## 🔒 Core Logic Modules & Key Implementations
 
-1. **🔑 Mandatory Registration, Base64 Encryption & Gatekeeper**:
-   - Enforces user login validation prior to room creation or entry. Passwords are encrypted via Base64 (`Buffer.from(password).toString('base64')`). Both frontend and backend verify account existence in PostgreSQL.
-2. **👑 System Admin Account (`admin` / `Brandon`) & Exclusive Management Dashboard (`/admin`)**:
-   - Database setup script pre-seeds default admin account `admin` with password `Brandon` (Base64: `QnJhbmRvbg==`).
+1. **🔑 Mandatory Registration, bcrypt Authentication & Gatekeeper**:
+   - Enforces user login validation prior to room creation or entry. Passwords must be at least 7 characters and are stored with bcrypt hashing, with legacy Base64 records upgraded on login. Both frontend and backend verify account existence in PostgreSQL.
+2. **👑 System Admin Account (`admin`) & Exclusive Management Dashboard (`/admin`)**:
+   - Database setup script pre-seeds the web admin account using `ADMIN_PASSWORD`; Docker PostgreSQL uses the fixed `root` / `brandon_pgdb` connection credentials.
    - Dedicated `/admin` dashboard accessible exclusively by `admin`; public leaderboard GET `/api/stats` filters out `admin` user.
    - Permission Isolation: `admin` is blocked from creating or joining rooms on both frontend and backend.
 3. **🃏 Black & White Wildcard Joker (`-`) System & Free Insertion Placement**:
@@ -143,7 +143,7 @@ Follows clean separation of concerns:
 8. **30-Second Multiples Inaction Reminder**:
    - Triggers an active timer during the player's turn. Inaction exceeding 30s, 60s, 90s... prompts an animated warning toast.
 9. **Containerization & Automatic DB Setup (`Dockerfile` & `entrypoint.sh`)**:
-   - Single Docker image combining Node.js and PostgreSQL 15, listening on port **60824**. Data persistence ensured via host directory mount at `/root/davinci_pgdata`.
+   - Multi-stage Docker image runs Next.js as a non-root `node` process while PostgreSQL is managed by the entrypoint. Data persistence is ensured via the host directory mount configured by the required `PG_DATA_DIR` setting.
 
 ---
 

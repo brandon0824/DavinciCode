@@ -1,17 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminAllUsers } from '@/lib/authService';
+import { getSessionUser } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
-    const url = new URL(request.url);
-    const adminUsername = url.searchParams.get('adminUsername');
-
-    // 仅限管理员账号访问
-    if (!adminUsername || adminUsername.trim() !== 'admin') {
-      return NextResponse.json({ error: '权限不足，仅管理员账号 (admin) 拥有此接口访问权限' }, { status: 403 });
-    }
+    const session = await getSessionUser(request);
+    if (!session) return NextResponse.json({ error: '请先登录' }, { status: 401 });
+    if (!session.isAdmin) return NextResponse.json({ error: '权限不足，仅管理员可访问' }, { status: 403 });
 
     const users = await getAdminAllUsers();
     return NextResponse.json({ users });

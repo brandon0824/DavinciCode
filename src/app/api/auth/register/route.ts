@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { registerUser } from '@/lib/authService';
+import { createSession } from '@/lib/session';
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,10 +16,12 @@ export async function POST(request: NextRequest) {
 
     const user = await registerUser(username, password);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       message: '注册成功',
       user
     });
+    await createSession(user.username, response);
+    return response;
   } catch (error) {
     console.error('注册错误:', error);
     return NextResponse.json(

@@ -77,7 +77,17 @@
 
 /* 卡牌样式 */
 .card {
-  @apply w-16 h-24 rounded-lg shadow-md border-2 cursor-pointer transition-all duration-200;
+  @apply w-16 h-24 rounded-lg shadow-md border-2 cursor-pointer transition-transform duration-200;
+}
+
+/* Keep controls comfortable on touch screens and avoid accidental horizontal overflow. */
+html, body {
+  min-width: 320px;
+  overflow-x: hidden;
+}
+
+button, [role="button"] {
+  touch-action: manipulation;
 }
 
 .card:hover {
@@ -119,4 +129,13 @@
 
 .player-normal {
   @apply bg-gray-100 border-gray-300;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

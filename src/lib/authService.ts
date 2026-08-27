@@ -1,10 +1,13 @@
 import { pgPool } from './postgres';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { validateUsername } from './utils';
 
 export interface User {
   id: number | string;
   username: string;
+  role: 'player' | 'admin';
+  mustChangePassword?: boolean;
   totalGames: number;
   totalWins: number;
   totalLosses: number;
@@ -43,7 +46,7 @@ export interface AdminUserItem {
   lastLoginAt?: Date;
 }
 
-// 注册新用户 (密码通过 Base64 加密算法)
+// 注册新用户 (bcrypt 哈希)
 export async function registerUser(username: string, password: string): Promise<User> {
   const trimmedUsername = username.trim();
   const trimmedPassword = password.trim();
@@ -52,8 +55,8 @@ export async function registerUser(username: string, password: string): Promise<
     throw new Error('用户名格式不正确（1-20个字符，支持中文、英文、数字、下划线）');
   }
 
-  if (trimmedPassword.length < 4) {
-    throw new Error('密码长度至少需要4个字符');
+  if (trimmedPassword.length < 7) {
+    throw new Error('密码长度至少需要7个字符');
   }
 
   // 1. 检查用户名是否已注册
@@ -62,14 +65,13 @@ export async function registerUser(username: string, password: string): Promise<
     throw new Error('该用户名已被注册，请直接登录或换一个用户名');
   }
 
-  // 2. 加密密码 (使用 Base64 算法加密)
-  const passwordHash = Buffer.from(trimmedPassword).toString('base64');
+  const passwordHash = await bcrypt.hash(trimmedPassword, 12);
 
   // 3. 写入数据库 (同时设 last_login_at 为当前时间)
   const insertRes = await pgPool.query(
-    `INSERT INTO users (username, password_hash, last_login_at) 
-     VALUES ($1, $2, CURRENT_TIMESTAMP) 
-     RETURNING id, username, total_games, total_wins, total_losses, created_at, last_login_at`,
+    `INSERT INTO users (username, password_hash, last_login_at, role)
+     VALUES ($1, $2, CURRENT_TIMESTAMP, 'player')
+     RETURNING id, username, role, must_change_password, total_games, total_wins, total_losses, created_at, last_login_at`,
     [trimmedUsername, passwordHash]
   );
 
@@ -79,6 +81,8 @@ export async function registerUser(username: string, password: string): Promise<
   return {
     id: row.id,
     username: row.username,
+    role: row.role || 'player',
+    mustChangePassword: Boolean(row.must_change_password),
     totalGames: row.total_games || 0,
     totalWins: row.total_wins || 0,
     totalLosses: row.total_losses || 0,
@@ -87,7 +91,7 @@ export async function registerUser(username: string, password: string): Promise<
   };
 }
 
-// 用户登录 (比对 Base64 加密密码，兼容模式支持旧哈希)
+// 用户登录（兼容旧 Base64 哈希并在成功后升级为 bcrypt）
 export async function loginUser(username: string, password: string): Promise<User> {
   const trimmedUsername = username.trim();
   const trimmedPassword = password.trim();
@@ -104,15 +108,22 @@ export async function loginUser(username: string, password: string): Promise<Use
 
   const row = res.rows[0];
 
-  // 2. 比对加密密码 (Base64 加密算法)
-  const base64Input = Buffer.from(trimmedPassword).toString('base64');
-  let isMatch = base64Input === row.password_hash;
-  if (!isMatch && row.password_hash.startsWith('$2')) {
-    isMatch = await bcrypt.compare(trimmedPassword, row.password_hash);
+  if (row.must_change_password && row.password_reset_expires_at && new Date(row.password_reset_expires_at).getTime() < Date.now()) {
+    throw new Error('临时密码已过期，请联系管理员重新重置');
   }
+
+  // 2. 比对加密密码 (Base64 加密算法)
+  const isLegacy = !String(row.password_hash).startsWith('$2');
+  let isMatch = isLegacy
+    ? Buffer.from(trimmedPassword).toString('base64') === row.password_hash
+    : await bcrypt.compare(trimmedPassword, row.password_hash);
 
   if (!isMatch) {
     throw new Error('用户名或密码错误');
+  }
+
+  if (isLegacy) {
+    await pgPool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [await bcrypt.hash(trimmedPassword, 12), row.id]);
   }
 
   // 3. 更新最后登录时间
@@ -126,12 +137,39 @@ export async function loginUser(username: string, password: string): Promise<Use
   return {
     id: row.id,
     username: row.username,
+    role: row.role || 'player',
+    mustChangePassword: Boolean(row.must_change_password),
     totalGames: row.total_games || 0,
     totalWins: row.total_wins || 0,
     totalLosses: row.total_losses || 0,
     createdAt: new Date(row.created_at),
     lastLoginAt: new Date()
   };
+}
+
+export async function resetUserPassword(username: string, adminUsername: string, sourceIp?: string): Promise<string> {
+  const temporaryPassword = crypto.randomBytes(9).toString('base64url');
+  const hash = await bcrypt.hash(temporaryPassword, 12);
+  const result = await pgPool.query(
+    `UPDATE users SET password_hash = $1, must_change_password = TRUE,
+      password_reset_expires_at = CURRENT_TIMESTAMP + INTERVAL '30 minutes', password_reset_by = $2
+     WHERE username = $3 AND username <> 'admin' RETURNING username`,
+    [hash, adminUsername, username.trim()]
+  );
+  if (!result.rows[0]) {
+    await pgPool.query('INSERT INTO admin_audit_logs(admin_username, action, target_username, source_ip, success) VALUES ($1,$2,$3,$4,FALSE)').catch(() => {});
+    throw new Error('用户不存在或不允许重置该账号');
+  }
+  await pgPool.query('INSERT INTO admin_audit_logs(admin_username, action, target_username, source_ip) VALUES ($1,$2,$3,$4)', [adminUsername, 'reset_password', username.trim(), sourceIp || null]).catch(() => {});
+  await pgPool.query('DELETE FROM user_sessions WHERE username = $1', [username.trim()]).catch(() => {});
+  return temporaryPassword;
+}
+
+export async function changePassword(username: string, currentPassword: string, newPassword: string): Promise<void> {
+  if (!newPassword || newPassword.trim().length < 7) throw new Error('新密码至少需要 7 个字符');
+  const result = await pgPool.query('SELECT password_hash FROM users WHERE username = $1', [username]);
+  if (!result.rows[0] || !(await bcrypt.compare(currentPassword, result.rows[0].password_hash))) throw new Error('当前密码错误');
+  await pgPool.query('UPDATE users SET password_hash = $1, must_change_password = FALSE, password_reset_expires_at = NULL, password_reset_by = NULL WHERE username = $2', [await bcrypt.hash(newPassword.trim(), 12), username]);
 }
 
 // 根据用户名获取用户信息
@@ -143,6 +181,8 @@ export async function getUserByUsername(username: string): Promise<User | null> 
   return {
     id: row.id,
     username: row.username,
+    role: row.role || 'player',
+    mustChangePassword: Boolean(row.must_change_password),
     totalGames: row.total_games || 0,
     totalWins: row.total_wins || 0,
     totalLosses: row.total_losses || 0,
@@ -189,14 +229,15 @@ export async function recordMatchHistory(
 ): Promise<void> {
   try {
     const endedAt = new Date();
+    const matchId = crypto.randomUUID();
     for (const username of allUsernames) {
       if (!username) continue;
       const isWinner = Boolean(winnerUsername && username === winnerUsername);
 
       await pgPool.query(
-        `INSERT INTO match_history (room_id, username, is_winner, started_at, ended_at)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [roomId, username, isWinner, startedAt, endedAt]
+        `INSERT INTO match_history (match_id, room_id, username, is_winner, started_at, ended_at)
+         VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (match_id, username) DO NOTHING`,
+        [matchId, roomId, username, isWinner, startedAt, endedAt]
       );
     }
     console.log(`📜 已成功记录房间 ${roomId} 的对局明细历史！`);

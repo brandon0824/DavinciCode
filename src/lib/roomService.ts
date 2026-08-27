@@ -1,13 +1,14 @@
 import { pgPool } from './postgres';
-import { initGame, GameData, repositionJokerCard } from './gameLogic';
-import { updateUserStats, recordMatchHistory } from './authService';
+import crypto from 'crypto';
+import { initGame, GameData, repositionJokerCard, sortCards } from './gameLogic';
+import { publishRoomEvent } from './roomEvents';
 
 export interface Room {
   id: string;
   name: string;
   hostUsername?: string;
   isPasswordProtected?: boolean;
-  status: 'waiting' | 'playing' | 'finished';
+  status: 'waiting' | 'playing' | 'settling' | 'finished' | 'closed';
   maxPlayers: number;
   createdAt: Date;
   startedAt?: Date;
@@ -57,6 +58,13 @@ export async function cleanupExpiredRooms(): Promise<number> {
   }
 }
 
+// Cleanup runs out of the request path so listing rooms does not perform deletes.
+const cleanupGlobal = globalThis as typeof globalThis & { __davinciRoomCleanup?: ReturnType<typeof setInterval> };
+if (!cleanupGlobal.__davinciRoomCleanup) {
+  cleanupGlobal.__davinciRoomCleanup = setInterval(() => { cleanupExpiredRooms().catch(() => {}); }, 10 * 60 * 1000);
+  cleanupGlobal.__davinciRoomCleanup.unref?.();
+}
+
 // Create a room
 export async function createRoom(data: CreateRoomData): Promise<string> {
   // 1. 验证创建者是否为已注册用户
@@ -103,6 +111,7 @@ export async function createRoom(data: CreateRoomData): Promise<string> {
   );
   
   console.log(`✅ 房间创建成功: ${roomId} - ${name} (有密码: ${Boolean(roomPassword)})`);
+  publishRoomEvent({ roomId, kind: 'room' });
   return roomId;
 }
 
@@ -127,9 +136,6 @@ export async function getRoom(roomId: string): Promise<Room | null> {
 
 // Get room list (waiting only)
 export async function getRoomList(): Promise<Room[]> {
-  // 获取房间列表前自动清理过期旧房间
-  await cleanupExpiredRooms();
-
   const res = await pgPool.query(
     `SELECT r.*, rp.username as host_username 
      FROM rooms r 
@@ -215,6 +221,7 @@ export async function joinRoom(data: JoinRoomData): Promise<boolean> {
   await appendRoomLog(roomId, `📢 玩家【${username}】加入了房间`);
 
   console.log(`✅ 新用户 ${username} 成功加入房间 ${roomId}`);
+  publishRoomEvent({ roomId, kind: 'room' });
   return true;
 }
 
@@ -295,6 +302,7 @@ export async function leaveRoom(roomId: string, username: string, isOfflineTimeo
     : `🚪 玩家【${username}】已主动离开房间`;
   
   await appendRoomLog(roomId, logMsg);
+  publishRoomEvent({ roomId, kind: 'room' });
 
   // 若退出时房间正在进行游戏，自动更新局内状态并检查胜负
   if (room && room.status === 'playing') {
@@ -345,8 +353,8 @@ export async function getRoomPlayers(roomId: string): Promise<RoomPlayer[]> {
     const offlineRes = await pgPool.query(
       `SELECT rp.username
        FROM room_players rp
-       JOIN users u ON rp.username = u.username
-       WHERE rp.room_id = $1 AND u.last_login_at < NOW() - INTERVAL '20 seconds'`,
+       JOIN user_presence p ON rp.username = p.username
+       WHERE rp.room_id = $1 AND p.last_seen_at < NOW() - INTERVAL '20 seconds'`,
       [roomId]
     );
 
@@ -365,7 +373,7 @@ export async function getRoomPlayers(roomId: string): Promise<RoomPlayer[]> {
 // Start game
 export async function startGame(roomId: string): Promise<boolean> {
   const room = await getRoom(roomId);
-  if (!room || room.status !== 'waiting') {
+  if (!room || !['waiting', 'finished'].includes(room.status)) {
     throw new Error('房间状态不允许开始游戏');
   }
   
@@ -374,10 +382,11 @@ export async function startGame(roomId: string): Promise<boolean> {
     throw new Error('至少需要2名玩家才能开始游戏');
   }
   
-  await pgPool.query(
-    'UPDATE rooms SET status = $1, started_at = CURRENT_TIMESTAMP WHERE id = $2',
-    ['playing', roomId]
+  const transition = await pgPool.query(
+    "UPDATE rooms SET status = $1, started_at = CURRENT_TIMESTAMP, match_id = $3 WHERE id = $2 AND status IN ('waiting','finished')",
+    ['playing', roomId, crypto.randomUUID()]
   );
+  if (!transition.rowCount) throw new Error('房间状态已发生变化，请刷新后重试');
   
   const existingState = await getGameState(roomId);
   const existingLogs = (existingState && Array.isArray(existingState.logs)) ? existingState.logs : [];
@@ -399,56 +408,186 @@ export async function startGame(roomId: string): Promise<boolean> {
   );
   
   console.log(`✅ 房间 ${roomId} 游戏开始`);
+  publishRoomEvent({ roomId, kind: 'game' });
   return true;
 }
 
 // Get Game State
-export async function getGameState(roomId: string): Promise<any | null> {
+export async function getGameState(roomId: string, viewerUsername?: string): Promise<any | null> {
   const res = await pgPool.query(
-    'SELECT game_data FROM game_states WHERE room_id = $1',
+    'SELECT game_data, version FROM game_states WHERE room_id = $1',
     [roomId]
   );
   if (res.rows.length === 0) return null;
-  return res.rows[0].game_data;
+  const data = res.rows[0].game_data;
+  if (data && typeof data === 'object') data.version = res.rows[0].version || 0;
+  try {
+    const messages = await pgPool.query('SELECT username, message, created_at FROM room_messages WHERE room_id = $1 ORDER BY created_at DESC LIMIT 200', [roomId]);
+    if (messages.rows.length) data.chat = messages.rows.reverse().map(row => ({ username: row.username, message: row.message, timestamp: new Date(row.created_at).toISOString() }));
+  } catch { /* migration may not have run yet; retain legacy JSONB chat */ }
+  if (!viewerUsername || data?.turnStatus === 'ended' || data?.winner) return data;
+  const view = JSON.parse(JSON.stringify(data));
+  if (view.hands) {
+    for (const [username, hand] of Object.entries(view.hands as Record<string, any[]>)) {
+      if (username !== viewerUsername) {
+        (hand as any[]).forEach(card => { if (!card.isRevealed) card.value = null; });
+      }
+    }
+  }
+  return view;
 }
 
 // Update Game State
-export async function updateGameState(roomId: string, currentTurnUsername: string, gameData: any): Promise<boolean> {
+export async function updateGameState(roomId: string, currentTurnUsername: string, gameData: any, expectedVersion?: number): Promise<boolean> {
+  const allowedKeys = new Set(['deck', 'hands', 'currentTurn', 'turnStatus', 'lastDrawnCard', 'winner', 'logs', 'chat', 'lastActionId']);
+  if (!gameData || typeof gameData !== 'object' || Object.keys(gameData).some((key) => !allowedKeys.has(key) && key !== 'version')) {
+    throw new Error('对局状态字段不合法');
+  }
+  if (gameData?.logs?.length > 100) gameData.logs = gameData.logs.slice(-100);
+  if (gameData?.chat?.length > 200) gameData.chat = gameData.chat.slice(-200);
+  if (Buffer.byteLength(JSON.stringify(gameData), 'utf8') > 1024 * 1024) throw new Error('对局状态超过大小限制');
   const res = await pgPool.query(
-    `UPDATE game_states 
-     SET current_turn_username = $1, game_data = $2, updated_at = CURRENT_TIMESTAMP 
-     WHERE room_id = $3`,
-    [currentTurnUsername, JSON.stringify(gameData), roomId]
+    `UPDATE game_states
+     SET current_turn_username = $1, game_data = $2, updated_at = CURRENT_TIMESTAMP, version = version + 1,
+         updated_by = $4
+     WHERE room_id = $3 AND ($5::int IS NULL OR version = $5)`,
+    [currentTurnUsername, JSON.stringify(gameData), roomId, currentTurnUsername, expectedVersion ?? null]
   );
-  return (res.rowCount || 0) > 0;
+  const updated = (res.rowCount || 0) > 0;
+  if (updated) publishRoomEvent({ roomId, kind: 'game' });
+  return updated;
+}
+
+function activePlayers(hands: Record<string, any[]>) {
+  return Object.keys(hands).filter(user => (hands[user] || []).some(card => !card.isRevealed));
+}
+
+function nextActivePlayer(usernames: string[], current: string, hands: Record<string, any[]>) {
+  const active = activePlayers(hands);
+  if (active.length <= 1) return current;
+  const start = usernames.indexOf(current);
+  for (let i = 1; i <= usernames.length; i++) {
+    const candidate = usernames[(start + i) % usernames.length];
+    if (active.includes(candidate)) return candidate;
+  }
+  return current;
+}
+
+/** Server-authoritative game actions. The rules mirror the original client gameLogic flow. */
+export async function performGameAction(roomId: string, username: string, action: string, payload: any = {}) {
+  const players = await getRoomPlayersRaw(roomId);
+  if (!players.some(player => player.username === username)) throw new Error('你不是该房间玩家');
+  const state = await getGameState(roomId);
+  if (!state || !state.hands) throw new Error('游戏状态不存在');
+  const version = typeof state.version === 'number' ? state.version : undefined;
+  const actionId = String(payload.actionId || '');
+  if (actionId && state.lastActionId === actionId) return getGameState(roomId, username);
+  const data = JSON.parse(JSON.stringify(state));
+  if (actionId) data.lastActionId = actionId;
+  const usernames = players.map(player => player.username);
+  const log = (message: string) => { data.logs = [...(data.logs || []), message].slice(-100); };
+
+  if (action !== 'chat' && action !== 'surrender' && data.currentTurn !== username) throw new Error('当前不是你的回合');
+  if (action === 'draw') {
+    if (data.turnStatus !== 'drawing') throw new Error('当前不能摸牌');
+    if (payload.color !== 'black' && payload.color !== 'white') throw new Error('牌色参数错误');
+    const index = data.deck.findIndex((card: any) => card.color === payload.color);
+    if (index < 0) throw new Error('该颜色牌已摸完');
+    const [card] = data.deck.splice(index, 1);
+    card.owner = username;
+    data.hands[username] = sortCards([...(data.hands[username] || []), card]);
+    data.lastDrawnCard = card;
+    data.turnStatus = 'guessing';
+    log(`${username} 摸了一张${payload.color === 'black' ? '黑色' : '白色'}牌。`);
+  } else if (action === 'guess') {
+    if (!['guessing', 'guessing_again'].includes(data.turnStatus)) throw new Error('当前不能猜牌');
+    const target = data.hands[payload.targetUsername];
+    const card = target?.find((item: any) => item.id === payload.cardId);
+    const guessValue = Number(payload.guessValue);
+    if (payload.targetUsername === username || !card || card.isRevealed || ![-1, ...Array.from({ length: 12 }, (_, i) => i)].includes(guessValue)) throw new Error('猜牌参数不合法');
+    const display = guessValue === -1 ? '任意百搭牌 [-]' : `[${guessValue}]`;
+    if (card.value === guessValue) {
+      card.isRevealed = true;
+      log(`${username} 猜对了 ${payload.targetUsername} 的牌，数值确实是 ${display}！`);
+      const active = activePlayers(data.hands);
+      if (active.length === 1) { data.winner = username; data.turnStatus = 'ended'; log(`🎉 恭喜 ${username} 击败了所有对手，获得了最后的胜利！`); }
+      else { data.turnStatus = 'guessing_again'; data.lastDrawnCard = null; }
+    } else {
+      log(`${username} 猜测 ${payload.targetUsername} 的牌是 ${display}，但是猜错了！`);
+      const ownHand = data.hands[username] || [];
+      const penalty = data.lastDrawnCard ? ownHand.find((item: any) => item.id === data.lastDrawnCard.id) : ownHand.find((item: any) => !item.isRevealed);
+      if (penalty) { penalty.isRevealed = true; log(`${username} 必须公开自己的一张牌。`); }
+      const active = activePlayers(data.hands);
+      if (active.length === 1) { data.winner = active[0]; data.turnStatus = 'ended'; log(`🎉 猜测失败后胜利者为 ${data.winner}`); }
+      else { data.currentTurn = nextActivePlayer(usernames, username, data.hands); data.turnStatus = 'drawing'; data.lastDrawnCard = null; log(`回合结束。现在是 ${data.currentTurn} 的回合。`); }
+    }
+  } else if (action === 'pass') {
+    if (data.turnStatus !== 'guessing_again') throw new Error('当前不能跳过回合');
+    data.currentTurn = nextActivePlayer(usernames, username, data.hands); data.turnStatus = 'drawing'; data.lastDrawnCard = null;
+    log(`${username} 选择结束猜测，跳过回合。现在是 ${data.currentTurn} 的回合。`);
+  } else if (action === 'surrender') {
+    (data.hands[username] || []).forEach((card: any) => { card.isRevealed = true; });
+    log(`🏳️ 玩家 ${username} 选择主动认输，手牌已全部公开！`);
+    const active = activePlayers(data.hands);
+    if (active.length === 1) { data.winner = active[0]; data.turnStatus = 'ended'; log(`🎉 恭喜 ${data.winner} 获得了最后的胜利！`); }
+    else if (data.currentTurn === username) { data.currentTurn = nextActivePlayer(usernames, username, data.hands); data.turnStatus = 'drawing'; data.lastDrawnCard = null; }
+  } else if (action === 'chat') {
+    const message = String(payload.message || '').trim();
+    if (!message || message.length > 500) throw new Error('聊天内容不能为空且不能超过 500 个字符');
+    await pgPool.query('INSERT INTO room_messages(room_id, username, message) VALUES ($1,$2,$3)', [roomId, username, message]).catch(() => {});
+    data.chat = [...(data.chat || []), { username, message, timestamp: new Date().toISOString() }].slice(-200);
+  } else {
+    throw new Error('不支持的游戏动作');
+  }
+
+  const updated = await updateGameState(roomId, data.currentTurn, data, version);
+  if (!updated) throw Object.assign(new Error('对局状态已更新，请重新同步'), { code: 'VERSION_CONFLICT' });
+  if (actionId) {
+    await pgPool.query('INSERT INTO game_actions(room_id, match_id, username, action_id, action, payload) SELECT $1, match_id, $2, $3, $4, $5 FROM rooms WHERE id = $1 ON CONFLICT (room_id, action_id) DO NOTHING', [roomId, username, actionId, action, JSON.stringify(payload)]).catch(() => {});
+    const nextVersion = (version || 0) + 1;
+    if (nextVersion % 20 === 0 || data.turnStatus === 'ended') await pgPool.query('INSERT INTO game_state_snapshots(room_id, version, game_data) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [roomId, nextVersion, JSON.stringify(data)]).catch(() => {});
+  }
+  if (data.winner) await endGame(roomId, data.winner);
+  return getGameState(roomId, username);
 }
 
 // End game (reverts status to 'waiting' so players can view/rejoin the room in lobby list)
 export async function endGame(roomId: string, winner?: string): Promise<boolean> {
-  const room = await getRoom(roomId);
-
-  await pgPool.query(
-    'UPDATE rooms SET status = $1, ended_at = CURRENT_TIMESTAMP WHERE id = $2',
-    ['waiting', roomId]
-  );
-  
-  if (winner) {
-    const gameData = await getGameState(roomId);
-    if (gameData) {
-      gameData.winner = winner;
-      gameData.turnStatus = 'ended';
-      await updateGameState(roomId, gameData.currentTurn, gameData);
+  const client = await pgPool.connect();
+  try {
+    await client.query('BEGIN');
+    const roomResult = await client.query(
+      `UPDATE rooms SET status = 'settling', ended_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND status = 'playing'
+       RETURNING match_id, started_at`, [roomId]
+    );
+    if (!roomResult.rows[0]) { await client.query('ROLLBACK'); return false; }
+    const matchId = roomResult.rows[0].match_id || crypto.randomUUID();
+    const players = await client.query('SELECT username FROM room_players WHERE room_id = $1', [roomId]);
+    await client.query(
+      `UPDATE users SET total_games = total_games + 1,
+        total_wins = total_wins + CASE WHEN username = $1 THEN 1 ELSE 0 END,
+        total_losses = total_losses + CASE WHEN username <> $1 THEN 1 ELSE 0 END
+       WHERE username IN (SELECT username FROM room_players WHERE room_id = $2)`,
+      [winner || '', roomId]
+    );
+    for (const row of players.rows) {
+      const isWinner = Boolean(winner && row.username === winner);
+      await client.query(
+        `INSERT INTO match_history(match_id, room_id, username, is_winner, started_at, ended_at)
+         VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP) ON CONFLICT (match_id, username) DO NOTHING`,
+        [matchId, roomId, row.username, isWinner, roomResult.rows[0].started_at]
+      );
     }
-
-    // 自动更新所有参赛玩家的累计胜负与场次战绩，并写入对局明细表
-    const players = await getRoomPlayers(roomId);
-    const allUsernames = players.map(p => p.username);
-    await updateUserStats(winner, allUsernames);
-    await recordMatchHistory(roomId, winner, allUsernames, room?.startedAt || new Date());
-  }
-  
-  console.log(`✅ 房间 ${roomId} 游戏结束，获胜者: ${winner || '未知'}`);
-  return true;
+    await client.query("UPDATE rooms SET status = 'finished' WHERE id = $1", [roomId]);
+    await client.query('COMMIT');
+    publishRoomEvent({ roomId, kind: 'game' });
+    console.log(`✅ 房间 ${roomId} 游戏结束，获胜者: ${winner || '未知'}`);
+    return true;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
 }
 
 // 调整手牌中百搭牌 (-) 的插入摆放位置
@@ -477,13 +616,35 @@ export async function repositionJoker(
   const newHand = repositionJokerCard(hand, cardId, targetIndex);
   gameData.hands[username] = newHand;
 
-  await updateGameState(roomId, gameData.currentTurn, gameData);
-  return gameData;
+  const expectedVersion = typeof gameData.version === 'number' ? gameData.version : undefined;
+  delete gameData.version;
+  const updated = await updateGameState(roomId, gameData.currentTurn, gameData, expectedVersion);
+  if (!updated) throw Object.assign(new Error('对局状态已更新，请重新同步'), { code: 'VERSION_CONFLICT' });
+  return getGameState(roomId, username);
 }
 
 // Delete room
 export async function deleteRoom(roomId: string): Promise<boolean> {
+  // Whether closed explicitly or emptied by the last player leaving,
+  // a room must never retain chat history.
+  await pgPool.query('DELETE FROM room_messages WHERE room_id = $1', [roomId]);
   const res = await pgPool.query('DELETE FROM rooms WHERE id = $1', [roomId]);
   console.log(`✅ 房间 ${roomId} 已删除`);
+  publishRoomEvent({ roomId, kind: 'room' });
   return (res.rowCount || 0) > 0;
+}
+
+export async function closeRoom(roomId: string, username: string): Promise<boolean> {
+  const result = await pgPool.query(
+    `UPDATE rooms SET status = 'closed', ended_at = COALESCE(ended_at, CURRENT_TIMESTAMP)
+     WHERE id = $1 AND status IN ('waiting', 'finished')
+       AND EXISTS (SELECT 1 FROM room_players WHERE room_id = $1 AND username = $2 AND is_host = TRUE)`,
+    [roomId, username]
+  );
+  if (result.rowCount) {
+    // Closed rooms must not retain chat history.
+    await pgPool.query('DELETE FROM room_messages WHERE room_id = $1', [roomId]);
+    publishRoomEvent({ roomId, kind: 'room' });
+  }
+  return Boolean(result.rowCount);
 }

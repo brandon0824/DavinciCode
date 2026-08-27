@@ -10,7 +10,7 @@ Language / 语言选择:
 
 ## 🏗️ 整体技术架构
 
-本项目采用 **Serverless 友好** 且 **高度自闭环** 的全栈架构设计。前端页面与后端 API 路由均在 Next.js 14 (App Router) 框架内实现，数据持久化保存在 PostgreSQL 关系型数据库中，用户密码使用 Bcrypt 加盐哈希加密。系统可通过 Docker 容器化并映射 **60824** 端口轻松部署到 Linux 服务器（通过宿主机持久化卷 `/root/davinci_pgdata` 保持数据不丢失）。
+本项目采用 **Serverless 友好** 且 **高度自闭环** 的全栈架构设计。前端页面与后端 API 路由均在 Next.js 14 (App Router) 框架内实现，数据持久化保存在 PostgreSQL 关系型数据库中，用户密码使用 Bcrypt 加盐哈希存储。系统可通过 Docker 容器化并映射 **60824** 端口轻松部署到 Linux 服务器，PostgreSQL 宿主机持久化目录必须由 `.env.docker` 中的 `PG_DATA_DIR` 配置。
 
 ```
 +----------------------------------------------------------------+
@@ -59,14 +59,14 @@ Language / 语言选择:
 * **运行环境**：Node.js 22 运行时 (端口: 60824)。
 * **主要技术**：
   * **Next.js Route Handlers**：基于 Next.js App Router 的 RESTful API 路由。处理注册、登录、房间管理、战绩查询与游戏对局指令。
-  * **bcryptjs**：加盐哈希密码加密库。服务端在处理注册与登录时，对用户密码进行 10 轮加盐单向哈希处理。
+  * **bcryptjs**：加盐哈希密码库。服务端在处理注册与登录时使用 12 轮 bcrypt 哈希，旧版 Base64 记录成功登录后自动升级。
   * **node-postgres (`pg`)**：PostgreSQL 原生 Node.js 客户端。基于 `Pool` 连接池管理与物理数据库的高并发连接。
   * **TypeScript**：全系统静态强类型检验。保障从认证逻辑到游戏棋桌运算的全面类型安全。
 
 ### 3. 数据持久层 (Datastore)
 * **运行环境**：物理安装或容器部署的 PostgreSQL 关系型数据库。
 * **主要技术**：
-  * **永久数据表 (`users`)**：保存玩家账号、Bcrypt 加密密码及个人战绩数据（`total_games`, `total_wins`, `total_losses`），永久有效。
+  * **永久数据表 (`users`)**：保存玩家账号、Bcrypt 哈希密码及个人战绩数据（`total_games`, `total_wins`, `total_losses`），永久有效。
   * **对局明细表 (`match_history`)**：记录每一场对局的场次编号、胜负状态、实时胜率与开赛时间，供 `/stats` 战绩榜展现。
   * **临时关系模型 (`rooms` / `room_players`)**：维护实时在线房间和入房成员。
   * **JSONB 二进制大对象 (`game_states`)**：在 `game_states` 表中以 JSONB 原子化存取卡牌布局与对局日志。
@@ -79,7 +79,7 @@ Language / 语言选择:
 存储注册用户的身份信息与战绩数据：
 * `id` (SERIAL, PK): 自增主键。
 * `username` (VARCHAR, UNIQUE): 唯一用户名（1-20 位字符）。
-* `password_hash` (VARCHAR): Bcrypt 加密后的加盐散列密码串（不可逆）。
+* `password_hash` (VARCHAR): Bcrypt 加盐哈希密码串（不可逆）。
 * `total_games` (INT): 累计参与对战场次（默认 0）。
 * `total_wins` (INT): 累计胜场（默认 0）。
 * `total_losses` (INT): 累计负场（默认 0）。
@@ -122,10 +122,10 @@ Language / 语言选择:
 
 ## 🔒 核心逻辑模块与功能实现
 
-1. **🔑 强制注册、Base64 加密与身份验证门禁**：
-   - 访问房间或创建房间前强制验证用户身份，密码统一采用 Base64 加密存储；前端与后端 `roomService.ts` 均验证用户名合法性。
-2. **👑 系统管理员账号 (`admin` / `Brandon`) 与专属管理控制台 (`/admin`)**：
-   - 数据库初始化脚本预置默认管理员 `admin`，密码 `Brandon`（Base64: `QnJhbmRvbg==`）；
+1. **🔑 强制注册、bcrypt 哈希与身份验证门禁**：
+   - 访问房间或创建房间前强制验证用户身份，密码长度至少 7 个字符，统一采用 bcrypt 哈希存储，旧版 Base64 记录登录后自动升级；前端与后端 `roomService.ts` 均验证用户名合法性。
+2. **👑 系统管理员账号 (`admin`) 与专属管理控制台 (`/admin`)**：
+   - 数据库初始化脚本使用 `ADMIN_PASSWORD` 环境变量预置网页管理员账号；Docker PostgreSQL 固定使用 `root` / `brandon_pgdb` 连接凭据；
    - 专属控制台可查看全服所有用户明细；全服排行榜 (`/stats`) 的 GET `/api/stats` 接口过滤剔除 `admin` 用户；
    - 权限隔离：`admin` 被前后端严密拦截，禁止创建或加入房间。
 
@@ -148,7 +148,7 @@ Language / 语言选择:
 8. **回合 30 秒倍数超时提醒机制**：
    - 处于自己回合（`isMyTurn === true`）时触发独立计时器，当无操作停留满 30s、60s、90s... 时，自动弹窗与浮动 Toast 醒目提醒玩家做出选择。
 9. **容器化与自动化建表部署 (`Dockerfile` & `entrypoint.sh`)**：
-   - 使用单镜像封装 Node.js 与嵌入式 PostgreSQL，`entrypoint.sh` 脚本在容器启动时自动初始化 PostgreSQL 数据库并执行 `node scripts/setup-pg.js` 建表，全自动监听 **60824** 端口。挂载 `/root/davinci_pgdata` 确保物理存储持久化。
+   - 使用多阶段 Docker 构建，Next.js 以非 root `node` 用户运行，PostgreSQL 由 `entrypoint.sh` 管理并执行 `node scripts/setup-pg.js` 建表。通过 `.env.docker` 中必填的 `PG_DATA_DIR` 配置宿主机挂载目录，确保物理存储持久化。
 
 ---
 

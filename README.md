@@ -6,17 +6,23 @@ Language Options:
 - [English Documentation](README.md)
 - [Chinese Documentation / 中文文档](README_zh.md)
 
+Project Documents:
+- [Architecture Document](doc/design.md)
+- [Chinese Architecture Document / 中文架构设计文档](doc/design_zh.md)
+- [Improvement Plan / 优化计划](doc/IMPROVEMENT_PLAN.md)
+- [Operations Guide / 运维手册](doc/OPERATIONS.md)
+
 ---
 
 ## ✨ System Features & Highlights
 
-* **🔑 Mandatory User Registration & Secure Authentication (Base64)**:
+* **🔑 Mandatory User Registration & Secure Authentication (bcrypt)**:
   * **Login Gatekeeper**: Users must register or log in to a valid user account before creating or joining any room. Both frontend UI and backend PostgreSQL database strictly enforce user identity verification.
-  * **Base64 Password Encryption**: Employs Base64 password encoding (`Buffer.from(password).toString('base64')`) stored in PostgreSQL, combining security with high performance while maintaining backwards compatibility.
+  * **bcrypt Password Hashing**: New passwords use bcrypt; legacy Base64 records are upgraded to bcrypt after a successful login. Passwords must be at least 7 characters long.
   * **Session Persistence**: User sessions automatically persist in browser `sessionStorage`, avoiding repeated logins on page refresh.
 
 * **👑 System Admin User & Exclusive Management Dashboard (`/admin`)**:
-  * **Pre-seeded Admin Account**: Pre-seeded default admin account **`admin`** (password: **`****`**);
+  * **Pre-seeded Admin Account**: The `admin` account is initialized with the deployment-time `ADMIN_PASSWORD` environment variable; production credentials are never stored in documentation;
   * **Leaderboard Exclusion**: Admin user is automatically filtered out from public leaderboards (`/stats`), keeping ranks pure for genuine players;
   * **Exclusive Admin Dashboard (`/admin`)**: Accessible exclusively by `admin`. Features responsive data tables and summary metrics displaying all registered users: Username, Wins/Losses/Total Games, Win Rate %, 15s Heartbeat Online Status (`🟢 Online / ⚪ Offline`), Registration Time, and Last Active Time.
   * **Permission Isolation Guard**: The `admin` user is dedicated to server management and has zero room creation or game battle permissions. Attempting to create or join rooms triggers automatic error prevention.
@@ -48,13 +54,14 @@ Language Options:
   * Automatically removes inactive room players who close Chrome tabs or lose connection for over 20 seconds, freeing room slots.
   * Host status is seamlessly transferred to remaining room members if the host disconnects.
   * Waiting room lobby displays a **`📢 Room Event Log`** stream tracking player joins (`📢`), leaves (`🚪`), and offline cleanups (`⚠️`).
+  * Chat messages are deleted immediately when a room is closed, including when the last player leaves.
 
 * **🔑 Room Host Password Bypass for Returning**:
   * Room hosts returning to their own password-protected room bypass the password prompt on frontend and backend.
 
 * **🐳 Docker Deployment & Data Volume Persistence**:
   * Shell scripts provided: `docker-build.sh` (one-click deployment) and `cleanDBAndRestart.sh` (one-click database wipe & restart).
-  * Host volume directory `/root/davinci_pgdata:/var/lib/postgresql` preserves all user accounts and battle history across container rebuilds.
+  * Host volume directory `${PG_DATA_DIR}:/var/lib/postgresql` preserves all user accounts and battle history across container rebuilds. Docker requires `PG_DATA_DIR` in `.env.docker`.
 
 * **🌐 Direct External Database Connection Support**:
   * Automatically exposes PostgreSQL port `5432` and enables `listen_addresses = '*'`, allowing direct external management via Navicat, DBeaver, DataGrip, or pgAdmin.
@@ -66,7 +73,7 @@ Language Options:
 * **Core Framework**: Next.js 14 (App Router)
 * **Frontend UI & Animations**: React 18, Tailwind CSS, Framer Motion, Lucide React
 * **Backend API**: Next.js Route Handlers (RESTful APIs)
-* **Encryption**: Base64 Encryption (High performance password storage)
+* **Password hashing**: bcrypt with legacy hash migration
 * **Database**: PostgreSQL (with `pg` connection pool & JSONB data storage)
 * **Containerization**: Docker (Embedded PostgreSQL 15 & automated shell deployment scripts)
 
@@ -79,8 +86,8 @@ After allowing inbound TCP port `5432` in your server firewall / cloud security 
 - **Host**: Your Linux server's public IPv4 address
 - **Port**: `5432`
 - **Database**: `davinci`
-- **Username**: `****`
-- **Password**: `****`
+- **Username**: The configured `DB_USER` application/database user
+- **Password**: `brandon_pgdb` (fixed Docker PostgreSQL `root` role password)
 
 ---
 
@@ -88,7 +95,18 @@ After allowing inbound TCP port `5432` in your server firewall / cloud security 
 
 Supports **Docker one-click deployment** or **Local Node.js environment**.
 
-### Option 1: Docker One-Click Shell Script Deployment (Recommended, Port 60824 & Persistence at `/root/davinci_pgdata`)
+### Option 1: Docker One-Click Shell Script Deployment (Recommended, Port 60824)
+
+Before running the Docker scripts, create a root `.env.docker` containing only these two deployment settings:
+
+```env
+ADMIN_PASSWORD=change-me-admin
+PG_DATA_DIR=/root/davinci_pgdata
+```
+
+`ADMIN_PASSWORD` is only the web admin login password. Docker PostgreSQL uses fixed credentials `root` / `brandon_pgdb`.
+
+The Docker PostgreSQL instance listens on all interfaces and the scripts map port `5432` to the host. Restrict access with your server firewall or cloud security group.
 
 Packaged with Node.js runtime and embedded PostgreSQL database:
 
@@ -115,25 +133,31 @@ npm install
 ```
 
 #### 2. Configure Environment Variables
-Create `.env.local` file in root directory:
+Configure the root `.env.local` file before starting. Local Node.js startup reads database and admin settings directly from `.env.local`; it does not use `PG_DATA_DIR`.
 ```env
 DB_HOST=localhost
 DB_PORT=5432
 DB_USER=root
-DB_PASSWORD=root
+DB_PASSWORD=local-password
 DB_NAME=davinci
+ADMIN_PASSWORD=local-admin-password
 ```
 
 #### 3. Run Database Setup Script
 ```bash
 node scripts/setup-pg.js
 ```
+If `DB_NAME` already exists, the script validates the required tables and columns first and stops with an explicit error if the schema does not match; it does not silently alter an existing database.
 
 #### 4. Start Development Server
 ```bash
 npm run dev
 ```
-Access at `http://localhost:3000` or `http://localhost:60824`.
+Alternatively, run the complete local startup flow with:
+```bash
+./localStart.sh
+```
+Access at `http://localhost:60824`.
 
 #### 5. Production Build
 ```bash

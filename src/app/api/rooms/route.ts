@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRoom, getRoomList, joinRoom } from '@/lib/roomService';
+import { getSessionUser } from '@/lib/session';
 
 // 获取房间列表
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const session = await getSessionUser(request);
+    if (!session) return NextResponse.json({ error: '请先登录' }, { status: 401 });
     const rooms = await getRoomList();
     return NextResponse.json({ rooms });
   } catch (error) {
@@ -18,10 +21,12 @@ export async function GET() {
 // 创建房间
 export async function POST(request: NextRequest) {
   try {
+    const session = await getSessionUser(request);
+    if (!session) return NextResponse.json({ error: '请先登录' }, { status: 401 });
     const body = await request.json();
     const { name, username, password, customRoomId } = body;
 
-    if (!name || !username) {
+    if (!name || !username || username !== session.username) {
       return NextResponse.json(
         { error: '房间名称和用户名不能为空' },
         { status: 400 }

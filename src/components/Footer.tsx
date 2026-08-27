@@ -39,8 +39,13 @@ export default function Footer({ initialCount }: FooterProps) {
 
   useEffect(() => {
     fetchOnlineCount();
-    const interval = setInterval(fetchOnlineCount, 4000); // refresh count & heartbeat every 4s silently
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const start = () => { if (!document.hidden && !interval) interval = setInterval(fetchOnlineCount, 4000); };
+    const stop = () => { if (interval) { clearInterval(interval); interval = undefined; } };
+    const onVisibility = () => document.hidden ? stop() : (fetchOnlineCount(), start());
+    document.addEventListener('visibilitychange', onVisibility);
+    start();
+    return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
   }, []);
 
   return (

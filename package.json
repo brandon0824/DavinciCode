@@ -7,36 +7,35 @@
     "build": "next build",
     "start": "next start -p 60824",
     "lint": "next lint",
-    "db:setup": "node scripts/setup-pg.js",
-    "db:reset": "node scripts/reset-pg.js"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:setup": "node --env-file=.env.local scripts/setup-pg.js",
+    "db:reset": "node scripts/reset-pg.js",
+    "db:backup": "bash scripts/backup-pg.sh",
+    "db:restore": "bash scripts/restore-pg.sh",
+    "test:pressure": "node scripts/pressure-test.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-toast": "^1.1.5",
     "@radix-ui/react-tooltip": "^1.0.7",
-    "@supabase/supabase-js": "^2.110.2",
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "framer-motion": "^11.0.8",
-    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.400.0",
-    "mysql2": "^3.9.2",
     "next": "14.2.31",
     "pg": "^8.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "redis": "^4.6.13",
-    "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1",
     "tailwind-merge": "^2.2.1",
-    "tailwindcss-animate": "^1.0.7",
-    "zustand": "^4.5.0"
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20",
     "@types/pg": "^8.20.0",
     "@types/react": "^18",
@@ -46,6 +45,7 @@
     "eslint-config-next": "14.2.31",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   }
 }

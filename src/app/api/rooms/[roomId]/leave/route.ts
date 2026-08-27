@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { leaveRoom } from '@/lib/roomService';
+import { getSessionUser } from '@/lib/session';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: { roomId: string } }
 ) {
   try {
+    const session = await getSessionUser(request);
+    if (!session) return NextResponse.json({ error: '请先登录' }, { status: 401 });
     const { roomId } = params;
     const body = await request.json();
     const { username } = body;
 
-    if (!username) {
+    if (!username || username !== session.username) {
       return NextResponse.json(
         { error: '用户名不能为空' },
         { status: 400 }

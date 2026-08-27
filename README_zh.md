@@ -6,17 +6,23 @@ Language / 语言选择:
 - [English Documentation](README.md)
 - [中文文档](README_zh.md)
 
+项目文档：
+- [英文架构设计文档](doc/design.md)
+- [中文架构设计文档](doc/design_zh.md)
+- [优化计划](doc/IMPROVEMENT_PLAN.md)
+- [运维手册](doc/OPERATIONS.md)
+
 ---
 
 ## ✨ 系统核心功能与特色
 
-* **🔑 强制用户注册与安全认证 (Base64 Authentication)**：
+* **🔑 强制用户注册与安全认证 (bcrypt Authentication)**：
   * **登录门禁校验**：用户必须先完成账号注册/登录，方可创建房间或进入任何现有房间。系统在前端与后端 PostgreSQL 数据库双重校验用户合法身份。
-  * **密码加密存储**：采用 Base64 加密算法（`Buffer.from(password).toString('base64')`）将用户密码加密保存于数据库中，兼顾安全性与解析效率，同时兼容旧版哈希算法。
+  * **密码哈希存储**：新密码使用 bcrypt 哈希；旧版 Base64 记录在成功登录后自动升级为 bcrypt。密码长度至少需要 7 个字符。
   * **会话持久化**：登录状态自动持久化保存于浏览器 `sessionStorage`，刷新或重新打开网页无需重复登录。
 
 * **👑 系统管理员账号与专属控制台 (`/admin`)**：
-  * **预置管理员账号**：系统初始化时自动建立管理员账号 **`admin`**（密码: **`****`**）；
+  * **预置管理员账号**：系统初始化时使用环境变量 `ADMIN_PASSWORD` 建立管理员账号，生产环境不得使用默认密码；
   * **全服胜率排行榜隔离**：全服胜率排行榜 (`/stats`) 自动过滤 `admin` 账号，榜单全为正规真实对战玩家；
   * **专属管理后台 (`/admin`)**：仅限 `admin` 浏览。以响应式图表与表格展示全服所有用户明细，包括：用户名、胜场/负场/总局数、胜率%、15 秒心跳在线状态（`🟢 在线 / ⚪ 离线`）、注册时间与最后在线时间。
   * **权限隔离防护**：`admin` 账号专用于全服数据管理，无建房与切局对战权限，试图建房或加入房间时系统自动拦截提示。
@@ -48,13 +54,14 @@ Language / 语言选择:
   * 房间内玩家无心跳超过 20 秒（如直接关闭 Chrome 窗口），系统自动将其移出房间并释放槽位；
   * 若离线的是房主，房主权限自动无缝转移给房间内剩余成员；
   * 房间等待大厅新增 **`📢 房间动态提示`** 消息流，实时同步玩家加入（`📢`）、主动离开（`🚪`）与掉线踢出（`⚠️`）。
+  * 房间关闭后会立即删除该房间的全部聊天消息，包括最后一名玩家离开导致房间销毁的情况。
 
 * **🔑 房主重返自建加密房间免输入密码**：
   * 房主若误退大厅重返自己创建的加密房间，前端免除密码弹窗，后端自动校验房主身份无缝重返房间。
 
 * **🐳 Docker 一键部署与数据持久化**：
   * 提供 `docker-build.sh`（一键打包部署）与 `cleanDBAndRestart.sh`（一键清空数据重置）Shell 脚本；
-  * 挂载宿主机目录 `/root/davinci_pgdata:/var/lib/postgresql`，即使重新打包镜像或更新代码，用户账号与对战历史战绩数据**永久保存**。
+  * Docker 宿主机挂载目录由 `.env.docker` 中必填的 `PG_DATA_DIR` 指定（示例为 `/root/davinci_pgdata`），用户账号与对战历史战绩数据**永久保存**。
 
 * **🌐 外网远程数据库直连支持**：
   * 自动开放 PostgreSQL `5432` 端口与 `listen_addresses = '*'`，支持通过 Navicat / DBeaver / DataGrip 等外网数据库工具直连。
@@ -66,7 +73,7 @@ Language / 语言选择:
 * **核心框架**：Next.js 14 (App Router)
 * **前端视图与动效**：React 18, Tailwind CSS, Framer Motion, Lucide React
 * **后端 API**：Next.js Route Handlers (RESTful 无状态 API)
-* **密码加密**：Base64 加密算法（兼顾性能与安全存储）
+* **密码哈希**：bcrypt，兼容旧哈希自动迁移
 * **数据库**：PostgreSQL (配合 `pg` 连接池与 JSONB 二进制大对象存储)
 * **容器化**：Docker (内置 PostgreSQL 15 与自动化 Shell 部署脚本)
 
@@ -79,8 +86,8 @@ Language / 语言选择:
 - **主机名/IP (Host)**: 你的 Linux 服务器外网 IPv4 地址
 - **端口 (Port)**: `5432`
 - **初始数据库 (Database)**: `davinci`
-- **用户名 (Username)**: `****`
-- **密码 (Password)**: `****`
+- **用户名 (Username)**：部署时配置的 `DB_USER` 数据库账号
+- **密码 (Password)**：`brandon_pgdb`（Docker PostgreSQL `root` 账号固定密码）
 
 ---
 
@@ -88,7 +95,18 @@ Language / 语言选择:
 
 本项目支持 **Docker 一键镜像启动** 或 **本地开发环境启动**。
 
-### 方式一：Docker 一键 Shell 脚本部署（推荐，端口 60824 & 数据持久化保存于 `/root/davinci_pgdata`）
+### 方式一：Docker 一键 Shell 脚本部署（推荐，端口 60824）
+
+执行 Docker 脚本前，请在根目录创建 `.env.docker`，且只保留以下两个部署配置：
+
+```env
+ADMIN_PASSWORD=change-me-admin
+PG_DATA_DIR=/root/davinci_pgdata
+```
+
+`ADMIN_PASSWORD` 仅用于网页管理员登录。Docker PostgreSQL 使用固定连接信息：用户名 `root`，密码 `brandon_pgdb`。
+
+Docker 内 PostgreSQL 默认监听所有网络接口，脚本会将容器 `5432` 端口映射到宿主机。请通过服务器防火墙或云安全组限制访问来源。
 
 我们在 Docker 镜像中封装了 Next.js 运行环境与内置 PostgreSQL 数据库：
 
@@ -115,13 +133,14 @@ npm install
 ```
 
 #### 2. 配置环境变量
-在根目录创建 `.env.local` 环境变量文件：
+启动前请直接配置根目录 `.env.local`。本地 Node.js 启动从 `.env.local` 读取数据库和管理员配置，不使用 `PG_DATA_DIR`。
 ```env
 DB_HOST=localhost
 DB_PORT=5432
 DB_USER=root
-DB_PASSWORD=root
+DB_PASSWORD=local-password
 DB_NAME=davinci
+ADMIN_PASSWORD=local-admin-password
 ```
 
 #### 3. 运行数据库迁移脚本
@@ -129,12 +148,17 @@ DB_NAME=davinci
 ```bash
 node scripts/setup-pg.js
 ```
+如果 `DB_NAME` 已存在，脚本会先校验所需表和字段；发现结构不符合要求时会直接报错停止，不会静默修改已有数据库。
 
 #### 4. 启动开发服务器
 ```bash
 npm run dev
 ```
-启动后访问 `http://localhost:3000` 或 `http://localhost:60824`。
+也可以直接执行脚本完成本地启动的全部步骤：
+```bash
+./localStart.sh
+```
+启动后访问 `http://localhost:60824`。
 
 #### 5. 生产构建打包
 ```bash

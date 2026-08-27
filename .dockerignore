@@ -1,0 +1,10 @@
+.git
+.next
+node_modules
+*.log
+.env.local
+.env.docker
+*.md
+supabase_schema.sql
+coverage
+tmp
