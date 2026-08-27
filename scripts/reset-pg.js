@@ -6,7 +6,7 @@ async function resetDatabase() {
   const host = process.env.DB_HOST || process.env.PGHOST || 'localhost';
   const port = parseInt(process.env.DB_PORT || process.env.PGPORT || '5432', 10);
   const user = 'root';
-  const password = 'brandon_pgdata';
+  const password = 'brandon_pgdb';
   const dbName = process.env.DB_NAME || process.env.PGDATABASE || 'davinci';
 
   const client = new Client({

@@ -125,7 +125,7 @@ Language / 语言选择:
 1. **🔑 强制注册、bcrypt 哈希与身份验证门禁**：
    - 访问房间或创建房间前强制验证用户身份，密码长度至少 7 个字符，统一采用 bcrypt 哈希存储，旧版 Base64 记录登录后自动升级；前端与后端 `roomService.ts` 均验证用户名合法性。
 2. **👑 系统管理员账号 (`admin`) 与专属管理控制台 (`/admin`)**：
-   - 数据库初始化脚本使用 `ADMIN_PASSWORD` 环境变量预置网页管理员账号；Docker PostgreSQL 固定使用 `root` / `brandon_pgdata` 连接凭据；
+   - 数据库初始化脚本使用 `ADMIN_PASSWORD` 环境变量预置网页管理员账号；Docker PostgreSQL 固定使用 `root` / `brandon_pgdb` 连接凭据；
    - 专属控制台可查看全服所有用户明细；全服排行榜 (`/stats`) 的 GET `/api/stats` 接口过滤剔除 `admin` 用户；
    - 权限隔离：`admin` 被前后端严密拦截，禁止创建或加入房间。
 
