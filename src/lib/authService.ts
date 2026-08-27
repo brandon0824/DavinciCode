@@ -236,7 +236,7 @@ export async function recordMatchHistory(
 
       await pgPool.query(
         `INSERT INTO match_history (match_id, room_id, username, is_winner, started_at, ended_at)
-         VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (match_id, username) DO NOTHING`,
+         VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,
         [matchId, roomId, username, isWinner, startedAt, endedAt]
       );
     }
@@ -281,7 +281,7 @@ export async function getLeaderboard(): Promise<LeaderboardItem[]> {
     `SELECT id, username, total_games, total_wins, total_losses,
             CASE WHEN total_games = 0 THEN 0 ELSE ROUND((total_wins::numeric / total_games::numeric) * 100, 1) END as win_rate
      FROM users
-     WHERE username != 'admin'
+     WHERE COALESCE(role, 'player') <> 'admin' AND username <> 'admin'
      ORDER BY (CASE WHEN total_games = 0 THEN 0 ELSE (total_wins::numeric / total_games::numeric) END) DESC,
               total_wins DESC,
               total_games DESC,
@@ -305,7 +305,12 @@ export async function getAdminAllUsers(): Promise<AdminUserItem[]> {
             (CASE WHEN total_games = 0 THEN 0 ELSE ROUND((total_wins::numeric / total_games::numeric) * 100, 1) END) as win_rate,
             (CASE WHEN last_login_at >= NOW() - INTERVAL '15 seconds' THEN true ELSE false END) as is_online
      FROM users
-     ORDER BY created_at DESC`
+     ORDER BY
+       CASE WHEN COALESCE(role, 'player') = 'admin' OR username = 'admin' THEN 1 ELSE 0 END ASC,
+       (CASE WHEN total_games = 0 THEN 0 ELSE (total_wins::numeric / total_games::numeric) END) DESC,
+       total_wins DESC,
+       total_games DESC,
+       created_at ASC`
   );
 
   return res.rows.map(row => ({

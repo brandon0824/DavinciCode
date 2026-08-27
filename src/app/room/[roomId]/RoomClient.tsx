@@ -83,6 +83,21 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
   // Wildcard Joker (-) Repositioning State
   const [selectedJokerCard, setSelectedJokerCard] = useState<GameCard | null>(null);
+  const lastPromptedJokerRef = useRef<string | null>(null);
+
+  // Restore the position prompt after a refresh/reconnect when the drawn card
+  // is still awaiting the player's guess.
+  useEffect(() => {
+    const drawn = gameState?.lastDrawnCard;
+    if (drawn?.value === -1 && gameState?.currentTurn === playerName && gameState.turnStatus === 'guessing') {
+      if (lastPromptedJokerRef.current !== drawn.id) {
+        lastPromptedJokerRef.current = drawn.id;
+        setSelectedJokerCard(drawn);
+      }
+    } else if (!drawn) {
+      lastPromptedJokerRef.current = null;
+    }
+  }, [gameState?.lastDrawnCard?.id, gameState?.currentTurn, gameState?.turnStatus, playerName]);
 
   useEffect(() => {
     if (!guessTarget && !surrenderModalOpen && !selectedJokerCard) return;
@@ -1209,6 +1224,18 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                   按照《达芬奇密码》官方规则，抽到或持有的百搭牌可以插入到您手牌中的<strong className="text-amber-600 dark:text-amber-400 font-black">任意位置</strong>（以此混淆对手猜测）：
                 </p>
 
+                <div className="rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 p-3">
+                  <div className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 mb-2">您的当前手牌</div>
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                    {(gameState?.hands[playerName!] || []).map((card, index) => (
+                      <div key={card.id} className={`flex-shrink-0 w-10 h-14 rounded-lg border flex flex-col items-center justify-center text-sm font-black ${card.id === selectedJokerCard.id ? 'bg-amber-100 border-amber-400 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300' : card.color === 'black' ? 'bg-slate-950 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
+                        <span>{getCardDisplayValue(card.value)}</span>
+                        <span className="text-[8px] opacity-60">#{index + 1}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2.5 pt-1">
                   {Array.from({ length: (gameState?.hands[playerName!] || []).length }, (_, slotIdx) => (
                     <button
@@ -1501,6 +1528,18 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                 按照《达芬奇密码》官方规则，抽到或持有的百搭牌可以插入到您手牌中的<strong className="text-amber-600 dark:text-amber-400 font-black">任意位置</strong>（以此混淆对手猜测）：
               </p>
+
+              <div className="rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 p-3">
+                <div className="text-[10px] font-bold tracking-wider text-slate-400 dark:text-slate-500 mb-2">您的当前手牌</div>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                  {(gameState?.hands[playerName!] || []).map((card, index) => (
+                    <div key={card.id} className={`flex-shrink-0 w-10 h-14 rounded-lg border flex flex-col items-center justify-center text-sm font-black ${card.id === selectedJokerCard.id ? 'bg-amber-100 border-amber-400 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300' : card.color === 'black' ? 'bg-slate-950 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'}`}>
+                      <span>{getCardDisplayValue(card.value)}</span>
+                      <span className="text-[8px] opacity-60">#{index + 1}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
 
               <div className="grid grid-cols-2 gap-2.5 pt-1">
                 {Array.from({ length: (gameState?.hands[playerName!] || []).length }, (_, slotIdx) => (

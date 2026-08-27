@@ -543,7 +543,9 @@ export async function performGameAction(roomId: string, username: string, action
   const updated = await updateGameState(roomId, data.currentTurn, data, version);
   if (!updated) throw Object.assign(new Error('对局状态已更新，请重新同步'), { code: 'VERSION_CONFLICT' });
   if (actionId) {
-    await pgPool.query('INSERT INTO game_actions(room_id, match_id, username, action_id, action, payload) SELECT $1, match_id, $2, $3, $4, $5 FROM rooms WHERE id = $1 ON CONFLICT (room_id, action_id) DO NOTHING', [roomId, username, actionId, action, JSON.stringify(payload)]).catch(() => {});
+    // Use target-less conflict handling so older installations without the
+    // optional idempotency index can still complete the turn successfully.
+    await pgPool.query('INSERT INTO game_actions(room_id, match_id, username, action_id, action, payload) SELECT $1, match_id, $2, $3, $4, $5 FROM rooms WHERE id = $1 ON CONFLICT DO NOTHING', [roomId, username, actionId, action, JSON.stringify(payload)]).catch(() => {});
     const nextVersion = (version || 0) + 1;
     if (nextVersion % 20 === 0 || data.turnStatus === 'ended') await pgPool.query('INSERT INTO game_state_snapshots(room_id, version, game_data) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [roomId, nextVersion, JSON.stringify(data)]).catch(() => {});
   }
@@ -575,7 +577,7 @@ export async function endGame(roomId: string, winner?: string): Promise<boolean>
       const isWinner = Boolean(winner && row.username === winner);
       await client.query(
         `INSERT INTO match_history(match_id, room_id, username, is_winner, started_at, ended_at)
-         VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP) ON CONFLICT (match_id, username) DO NOTHING`,
+        VALUES ($1,$2,$3,$4,$5,CURRENT_TIMESTAMP) ON CONFLICT DO NOTHING`,
         [matchId, roomId, row.username, isWinner, roomResult.rows[0].started_at]
       );
     }

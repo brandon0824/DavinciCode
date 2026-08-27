@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
 import { 
   ShieldCheck, 
@@ -26,7 +25,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { useTheme } from '@/lib/useTheme';
-const Footer = dynamic(() => import('@/components/Footer'), { ssr: false });
+import Footer from '@/components/Footer';
 
 interface AdminUserItem {
   id: number;
