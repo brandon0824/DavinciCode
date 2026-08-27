@@ -82,10 +82,16 @@ async function setupDatabase() {
       for (const [table, columns] of Object.entries(required)) {
         for (const column of columns) if (!actual.has(`${table}.${column}`)) missing.push(`${table}.${column}`);
       }
-      if (missing.length) {
+      // A database may have been created by the Docker entrypoint before this
+      // script runs. Treat a completely empty schema as a fresh database and
+      // allow the migration statements below to initialize it. Non-empty
+      // databases are treated as existing installations: refuse to silently
+      // modify an incompatible schema and report the missing columns.
+      if (missing.length && schemaResult.rows.length > 0) {
         throw new Error(`数据库 '${dbName}' 结构不符合项目要求，缺少表或字段：${missing.join(', ')}。请修复结构后再执行 npm run db:setup；不会自动修改已有数据库。`);
       }
-      console.log('✅ Existing database schema validated.');
+      if (!missing.length) console.log('✅ Existing database schema validated.');
+      else console.log('ℹ️ 检测到空数据库，开始初始化项目表结构。');
     }
 
     // Keep a lightweight schema version ledger so environments can be checked
