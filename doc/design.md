@@ -120,7 +120,7 @@ Follows clean separation of concerns:
 1. **🔑 Mandatory Registration, bcrypt Authentication & Gatekeeper**:
    - Enforces user login validation prior to room creation or entry. Passwords must be at least 7 characters and are stored with bcrypt hashing, with legacy Base64 records upgraded on login. Both frontend and backend verify account existence in PostgreSQL.
 2. **👑 System Admin Account (`admin`) & Exclusive Management Dashboard (`/admin`)**:
-   - Database setup script pre-seeds the web admin account using `ADMIN_PASSWORD`; Docker PostgreSQL uses the fixed `root` / `brandon_pgdb` connection credentials.
+   - Database setup script pre-seeds the web admin account using `ADMIN_PASSWORD`; Docker PostgreSQL uses the fixed `root` / `brandon_pgdata` connection credentials.
    - Dedicated `/admin` dashboard accessible exclusively by `admin`; public leaderboard GET `/api/stats` filters out `admin` user.
    - Permission Isolation: `admin` is blocked from creating or joining rooms on both frontend and backend.
 3. **🃏 Black & White Wildcard Joker (`-`) System & Free Insertion Placement**:

@@ -20,7 +20,7 @@ fi
 CONTAINER_NAME="${CONTAINER_NAME:-davinci-code}"
 IMAGE_NAME="${IMAGE_NAME:-davinci-code:latest}"
 DATA_DIR="${PG_DATA_DIR}"
-DB_PASSWORD_VALUE="brandon_pgdb"
+DB_PASSWORD_VALUE="brandon_pgdata"
 
 echo "🛑 步骤 1/5: 正在停止已有同名容器 (${CONTAINER_NAME})..."
 docker stop "${CONTAINER_NAME}" 2>/dev/null || true

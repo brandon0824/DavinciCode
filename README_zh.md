@@ -87,7 +87,7 @@ Language / 语言选择:
 - **端口 (Port)**: `5432`
 - **初始数据库 (Database)**: `davinci`
 - **用户名 (Username)**：部署时配置的 `DB_USER` 数据库账号
-- **密码 (Password)**：`brandon_pgdb`（Docker PostgreSQL `root` 账号固定密码）
+- **密码 (Password)**：`brandon_pgdata`（Docker PostgreSQL `root` 账号固定密码）
 
 ---
 
@@ -104,7 +104,7 @@ ADMIN_PASSWORD=change-me-admin
 PG_DATA_DIR=/root/davinci_pgdata
 ```
 
-`ADMIN_PASSWORD` 仅用于网页管理员登录。Docker PostgreSQL 使用固定连接信息：用户名 `root`，密码 `brandon_pgdb`。
+`ADMIN_PASSWORD` 仅用于网页管理员登录。Docker PostgreSQL 使用固定连接信息：用户名 `root`，密码 `brandon_pgdata`。
 
 Docker 内 PostgreSQL 默认监听所有网络接口，脚本会将容器 `5432` 端口映射到宿主机。请通过服务器防火墙或云安全组限制访问来源。
 

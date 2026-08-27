@@ -87,7 +87,7 @@ After allowing inbound TCP port `5432` in your server firewall / cloud security 
 - **Port**: `5432`
 - **Database**: `davinci`
 - **Username**: The configured `DB_USER` application/database user
-- **Password**: `brandon_pgdb` (fixed Docker PostgreSQL `root` role password)
+- **Password**: `brandon_pgdata` (fixed Docker PostgreSQL `root` role password)
 
 ---
 
@@ -104,7 +104,7 @@ ADMIN_PASSWORD=change-me-admin
 PG_DATA_DIR=/root/davinci_pgdata
 ```
 
-`ADMIN_PASSWORD` is only the web admin login password. Docker PostgreSQL uses fixed credentials `root` / `brandon_pgdb`.
+`ADMIN_PASSWORD` is only the web admin login password. Docker PostgreSQL uses fixed credentials `root` / `brandon_pgdata`.
 
 The Docker PostgreSQL instance listens on all interfaces and the scripts map port `5432` to the host. Restrict access with your server firewall or cloud security group.
 
