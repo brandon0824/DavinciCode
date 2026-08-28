@@ -23,7 +23,11 @@ DATA_DIR="${PG_DATA_DIR}"
 echo "🔨 正在构建应用镜像并启动 PostgreSQL + Next.js 服务..."
 mkdir -p "${DATA_DIR}"
 docker compose --env-file "${SCRIPT_DIR}/.env.docker" -f "${SCRIPT_DIR}/docker-compose.yml" down --remove-orphans
-docker compose --env-file "${SCRIPT_DIR}/.env.docker" -f "${SCRIPT_DIR}/docker-compose.yml" up -d --build
+# Always rebuild the app image from the current checkout. This deployment is
+# often used immediately after gameplay changes; reusing a cached COPY layer
+# can otherwise keep an older client/server bundle running.
+docker compose --env-file "${SCRIPT_DIR}/.env.docker" -f "${SCRIPT_DIR}/docker-compose.yml" build --no-cache app
+docker compose --env-file "${SCRIPT_DIR}/.env.docker" -f "${SCRIPT_DIR}/docker-compose.yml" up -d --force-recreate
 
 echo "📋 部署完成！正在打印实时日志 (按 Ctrl+C 随时退出日志打印)..."
 docker compose --env-file "${SCRIPT_DIR}/.env.docker" -f "${SCRIPT_DIR}/docker-compose.yml" logs -f app
