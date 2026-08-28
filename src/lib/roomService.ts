@@ -393,8 +393,15 @@ export async function startGame(roomId: string): Promise<boolean> {
   const existingChat = (existingState && Array.isArray(existingState.chat)) ? existingState.chat : [];
 
   const newGameData = initGame(players.map(p => p.username));
+  // Every player participates in the private setup phase. This prevents
+  // observers from inferring who received a joker from readiness timing.
+  const setupPending = players.map(p => p.username);
   const initialGameData = {
     ...newGameData,
+    // All players privately confirm/arrange their initial hand before anyone
+    // can see another player's cards.
+    turnStatus: 'setup' as const,
+    setupPending,
     logs: [...existingLogs, ...newGameData.logs],
     chat: existingChat
   };
@@ -427,19 +434,34 @@ export async function getGameState(roomId: string, viewerUsername?: string): Pro
   } catch { /* migration may not have run yet; retain legacy JSONB chat */ }
   if (!viewerUsername || data?.turnStatus === 'ended' || data?.winner) return data;
   const view = JSON.parse(JSON.stringify(data));
+  const concealCards = (cards: any[], prefix: string) => cards.map((card, index) => ({
+    id: `${prefix}:${index}`,
+    color: card.color,
+    value: card.isRevealed ? card.value : null,
+    isRevealed: Boolean(card.isRevealed),
+  }));
+  // The deck's card ids and values are never useful to clients and would leak
+  // information about the remaining jokers.
+  if (view.deck) view.deck = concealCards(view.deck, 'deck');
   if (view.hands) {
     for (const [username, hand] of Object.entries(view.hands as Record<string, any[]>)) {
       if (username !== viewerUsername) {
-        (hand as any[]).forEach(card => { if (!card.isRevealed) card.value = null; });
+        // During private initial arrangement, opponents are not sent a hand at
+        // all. Afterwards they receive only color, revealed value and an opaque
+        // per-slot token—never internal card ids or joker metadata.
+        view.hands[username] = view.turnStatus === 'setup' ? [] : concealCards(hand as any[], `slot:${username}`);
       }
     }
+  }
+  if (view.lastDrawnCard && view.lastDrawnCard.owner !== viewerUsername && !view.lastDrawnCard.isRevealed) {
+    view.lastDrawnCard = { id: 'drawn', color: view.lastDrawnCard.color, value: null, isRevealed: false };
   }
   return view;
 }
 
 // Update Game State
 export async function updateGameState(roomId: string, currentTurnUsername: string, gameData: any, expectedVersion?: number): Promise<boolean> {
-  const allowedKeys = new Set(['deck', 'hands', 'currentTurn', 'turnStatus', 'lastDrawnCard', 'winner', 'logs', 'chat', 'lastActionId']);
+  const allowedKeys = new Set(['deck', 'hands', 'currentTurn', 'turnStatus', 'lastDrawnCard', 'winner', 'logs', 'chat', 'lastActionId', 'setupPending']);
   if (!gameData || typeof gameData !== 'object' || Object.keys(gameData).some((key) => !allowedKeys.has(key) && key !== 'version')) {
     throw new Error('对局状态字段不合法');
   }
@@ -477,8 +499,19 @@ function nextActivePlayer(usernames: string[], current: string, hands: Record<st
 export async function performGameAction(roomId: string, username: string, action: string, payload: any = {}) {
   const players = await getRoomPlayersRaw(roomId);
   if (!players.some(player => player.username === username)) throw new Error('你不是该房间玩家');
-  const state = await getGameState(roomId);
-  if (!state || !state.hands) throw new Error('游戏状态不存在');
+  let state = await getGameState(roomId);
+  // Chat is also available in the waiting room, where a complete game state
+  // (deck/hands/turn) may not exist yet. Create a lightweight state on demand.
+  if (!state && action === 'chat') {
+    await pgPool.query(
+      `INSERT INTO game_states (room_id, current_turn_username, game_data)
+       VALUES ($1, NULL, $2)
+       ON CONFLICT (room_id) DO NOTHING`,
+      [roomId, JSON.stringify({ logs: [], chat: [] })]
+    );
+    state = await getGameState(roomId);
+  }
+  if (!state || (action !== 'chat' && !state.hands)) throw new Error('游戏状态不存在');
   const version = typeof state.version === 'number' ? state.version : undefined;
   const actionId = String(payload.actionId || '');
   if (actionId && state.lastActionId === actionId) return getGameState(roomId, username);
@@ -487,7 +520,9 @@ export async function performGameAction(roomId: string, username: string, action
   const usernames = players.map(player => player.username);
   const log = (message: string) => { data.logs = [...(data.logs || []), message].slice(-100); };
 
-  if (action !== 'chat' && action !== 'surrender' && data.currentTurn !== username) throw new Error('当前不是你的回合');
+  // Initial setup is simultaneous; turn order only applies after setup ends.
+  if (!['chat', 'surrender', 'confirm_setup'].includes(action) && data.turnStatus !== 'setup' && data.currentTurn !== username) throw new Error('当前不是你的回合');
+  if (data.turnStatus === 'setup' && !['chat', 'confirm_setup'].includes(action)) throw new Error('正在私密整理手牌，请等待所有玩家完成');
   if (action === 'draw') {
     if (data.turnStatus !== 'drawing') throw new Error('当前不能摸牌');
     if (payload.color !== 'black' && payload.color !== 'white') throw new Error('牌色参数错误');
@@ -502,7 +537,8 @@ export async function performGameAction(roomId: string, username: string, action
   } else if (action === 'guess') {
     if (!['guessing', 'guessing_again'].includes(data.turnStatus)) throw new Error('当前不能猜牌');
     const target = data.hands[payload.targetUsername];
-    const card = target?.find((item: any) => item.id === payload.cardId);
+    const slotMatch = typeof payload.cardId === 'string' && payload.cardId.match(new RegExp(`^slot:${payload.targetUsername}:(\\d+)$`));
+    const card = slotMatch ? target?.[Number(slotMatch[1])] : target?.find((item: any) => item.id === payload.cardId);
     const guessValue = Number(payload.guessValue);
     if (payload.targetUsername === username || !card || card.isRevealed || ![-1, ...Array.from({ length: 12 }, (_, i) => i)].includes(guessValue)) throw new Error('猜牌参数不合法');
     const display = guessValue === -1 ? '任意百搭牌 [-]' : `[${guessValue}]`;
@@ -536,6 +572,15 @@ export async function performGameAction(roomId: string, username: string, action
     if (!message || message.length > 500) throw new Error('聊天内容不能为空且不能超过 500 个字符');
     await pgPool.query('INSERT INTO room_messages(room_id, username, message) VALUES ($1,$2,$3)', [roomId, username, message]).catch(() => {});
     data.chat = [...(data.chat || []), { username, message, timestamp: new Date().toISOString() }].slice(-200);
+  } else if (action === 'confirm_setup') {
+    if (data.turnStatus !== 'setup' || !data.setupPending?.includes(username)) throw new Error('当前无需确认手牌');
+    const hasJoker = (data.hands[username] || []).some((card: any) => card.value === -1);
+    if (hasJoker) throw new Error('请先选择任意牌的位置');
+    data.setupPending = data.setupPending.filter((name: string) => name !== username);
+    if (data.setupPending.length === 0) {
+      data.turnStatus = 'drawing';
+      data.logs = [...(data.logs || []), '所有玩家已完成私密手牌整理，游戏开始！'];
+    }
   } else {
     throw new Error('不支持的游戏动作');
   }
@@ -617,6 +662,16 @@ export async function repositionJoker(
   // 调整手牌排序（静默无声更新，绝不清空或泄露日志给对手）
   const newHand = repositionJokerCard(hand, cardId, targetIndex);
   gameData.hands[username] = newHand;
+  if (gameData.turnStatus === 'setup') {
+    if (!Array.isArray(gameData.setupPending) || !gameData.setupPending.includes(username)) {
+      throw new Error('你无需整理初始手牌');
+    }
+    gameData.setupPending = gameData.setupPending.filter((name: string) => name !== username);
+    if (gameData.setupPending.length === 0) {
+      gameData.turnStatus = 'drawing';
+      gameData.logs = [...(gameData.logs || []), '所有玩家已完成私密手牌整理，游戏开始！'];
+    }
+  }
 
   const expectedVersion = typeof gameData.version === 'number' ? gameData.version : undefined;
   delete gameData.version;

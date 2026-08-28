@@ -11,10 +11,11 @@ export interface GameData {
   deck: Card[];
   hands: { [username: string]: Card[] };
   currentTurn: string; // username
-  turnStatus: 'drawing' | 'guessing' | 'guessing_again' | 'ended'; // status within the turn
+  turnStatus: 'setup' | 'drawing' | 'guessing' | 'guessing_again' | 'ended'; // status within the turn
   lastDrawnCard: Card | null; // card drawn in this turn, exposed if guess fails
   winner: string | null;
   logs: string[];
+  setupPending?: string[];
 }
 
 // Display helper for card value: -1 is displayed as '-', otherwise number string

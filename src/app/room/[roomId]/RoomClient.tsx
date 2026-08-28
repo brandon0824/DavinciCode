@@ -89,6 +89,14 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   // is still awaiting the player's guess.
   useEffect(() => {
     const drawn = gameState?.lastDrawnCard;
+    if (gameState?.turnStatus === 'setup' && gameState.setupPending?.includes(playerName || '')) {
+      const initialJoker = gameState.hands?.[playerName || '']?.find((card: any) => card.value === -1);
+      if (initialJoker && lastPromptedJokerRef.current !== `setup:${initialJoker.id}`) {
+        lastPromptedJokerRef.current = `setup:${initialJoker.id}`;
+        setSelectedJokerCard(initialJoker);
+      }
+      return;
+    }
     if (drawn?.value === -1 && gameState?.currentTurn === playerName && gameState.turnStatus === 'guessing') {
       if (lastPromptedJokerRef.current !== drawn.id) {
         lastPromptedJokerRef.current = drawn.id;
@@ -97,7 +105,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     } else if (!drawn) {
       lastPromptedJokerRef.current = null;
     }
-  }, [gameState?.lastDrawnCard?.id, gameState?.currentTurn, gameState?.turnStatus, playerName]);
+  }, [gameState?.lastDrawnCard?.id, gameState?.currentTurn, gameState?.turnStatus, gameState?.setupPending?.join(','), gameState?.hands?.[playerName || '']?.map((card: any) => card.id).join(','), playerName]);
 
   useEffect(() => {
     if (!guessTarget && !surrenderModalOpen && !selectedJokerCard) return;
@@ -356,7 +364,10 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
       body: JSON.stringify({ action, username: playerName, actionId: crypto.randomUUID(), ...payload })
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || '游戏动作失败');
+    if (!response.ok) {
+      const error = Object.assign(new Error(result.error || '游戏动作失败'), { code: result.code });
+      throw error;
+    }
     if (result.gameState) setGameState(result.gameState);
     return result.gameState;
   };
@@ -364,11 +375,25 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   // Send Chat Message
   const sendChatMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatMessage.trim() || !playerName || !gameState) return;
+    if (!chatMessage.trim() || !playerName) return;
 
     setChatMessage('');
     try { await sendGameAction('chat', { message: chatMessage.trim() }); }
     catch (error) { setError(error instanceof Error ? error.message : '发送消息失败'); }
+  };
+
+  const confirmPrivateSetup = async () => {
+    try {
+      await sendGameAction('confirm_setup');
+    } catch (error) {
+      // Simultaneous confirmations can race on the state version. Refresh and
+      // retry once so clicking at the same time remains a valid operation.
+      if ((error as any)?.code === 'VERSION_CONFLICT') {
+        await fetchSnapshot();
+        try { await sendGameAction('confirm_setup'); return; } catch { /* fall through */ }
+      }
+      setError(error instanceof Error ? error.message : '确认手牌失败');
+    }
   };
 
   // --- GAME ACTIONS IMPLEMENTATION ---
@@ -726,9 +751,12 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                 <div className={`w-3.5 h-3.5 rounded-full flex-shrink-0 ${isMyTurn ? 'bg-blue-500 dark:bg-blue-400 animate-pulse' : 'bg-slate-400 dark:bg-slate-600'}`}></div>
                 <div>
                   <h3 className="font-bold text-sm sm:text-base">
-                    {isMyTurn ? '您的回合！' : `正在等待玩家 ${gameState.currentTurn}...`}
+                    {gameState.turnStatus === 'setup'
+                      ? (gameState.setupPending?.includes(playerName || '') ? '请私密整理您的任意牌' : '其他玩家正在私密整理手牌…')
+                      : isMyTurn ? '您的回合！' : `正在等待玩家 ${gameState.currentTurn}...`}
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {gameState.turnStatus === 'setup' && '只有您能看到自己的手牌位置，其他玩家不会看到整理过程。'}
                     {gameState.turnStatus === 'drawing' && '请从中间摸取一张黑牌或白牌开始你的回合。'}
                     {gameState.turnStatus === 'guessing' && '点击下方任意对手的一张暗牌，猜它上面的数字。'}
                     {gameState.turnStatus === 'guessing_again' && '刚才猜测正确！你可以继续点对手的牌进行猜测，或者跳过回合。'}
@@ -742,9 +770,15 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                   )}
                 </div>
               </div>
-              {isMyTurn && gameState.turnStatus === 'guessing_again' && (
+                  {isMyTurn && gameState.turnStatus === 'guessing_again' && (
                 <Button onClick={passTurn} className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs py-1.5 px-4 font-bold rounded-xl active:scale-[0.96] transition-transform duration-100 self-end sm:self-auto">
                   结束并跳过回合
+                </Button>
+              )}
+              {gameState.turnStatus === 'setup' && gameState.setupPending?.includes(playerName || '') &&
+                !(gameState.hands?.[playerName || ''] || []).some((card: any) => card.value === -1) && (
+                <Button onClick={confirmPrivateSetup} className="bg-blue-600 hover:bg-blue-700 text-white text-xs py-1.5 px-4 font-bold rounded-xl active:scale-[0.96] transition-transform duration-100 self-end sm:self-auto">
+                  确认手牌
                 </Button>
               )}
             </div>
@@ -1216,7 +1250,9 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                 <div className="flex items-center space-x-3 text-amber-500">
                   <Sparkles className="w-6 h-6" />
                   <h3 className="text-lg font-black text-slate-800 dark:text-slate-100">
-                    任意百搭牌【-】插牌位置设定
+                    {gameState?.turnStatus === 'setup' && selectedJokerCard
+                      ? `${selectedJokerCard.color === 'black' ? '黑色' : '白色'}任意百搭牌【-】插牌位置设定`
+                      : '任意百搭牌【-】插牌位置设定'}
                   </h3>
                 </div>
                 
@@ -1498,6 +1534,49 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
               </div>
             )}
 
+            {/* Waiting-room chat: available before the game starts as well as between rounds */}
+            <div className="bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 mb-6 max-w-lg mx-auto w-full text-left shadow-inner">
+              <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-200 dark:border-slate-800">
+                <div className="text-xs font-bold text-slate-600 dark:text-slate-300 flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>房间聊天</span>
+                </div>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500">等待期间可交流</span>
+              </div>
+              <div ref={chatContainerRef} className="h-36 overflow-y-auto space-y-2 pr-1 scrollbar-thin" aria-live="polite">
+                {(gameState?.chat || []).length === 0 ? (
+                  <p className="text-center text-xs text-slate-400 dark:text-slate-600 py-10">还没有消息，先打个招呼吧</p>
+                ) : (
+                  (gameState?.chat || []).map((chat, idx) => (
+                    <div key={`waiting-chat-${idx}`} className={`text-xs p-2 rounded-xl max-w-[88%] ${
+                      chat.username === playerName
+                        ? 'bg-blue-600 text-white ml-auto'
+                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800'
+                    }`}>
+                      <span className={`block text-[9px] mb-0.5 font-bold ${chat.username === playerName ? 'text-blue-200' : 'text-slate-400 dark:text-slate-500'}`}>
+                        {chat.username}
+                      </span>
+                      <p className="break-all">{chat.message}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+              <form onSubmit={sendChatMessage} className="flex space-x-2 mt-3">
+                <Input
+                  type="text"
+                  placeholder="在此输入聊天..."
+                  value={chatMessage}
+                  onChange={(e) => setChatMessage(e.target.value)}
+                  maxLength={500}
+                  aria-label="房间聊天消息"
+                  className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 text-xs rounded-xl"
+                />
+                <Button type="submit" size="icon" aria-label="发送消息" className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-9 w-9 shrink-0 active:scale-[0.96] transition-transform duration-100">
+                  <Send className="w-3.5 h-3.5" strokeWidth={2} />
+                </Button>
+              </form>
+            </div>
+
             <div className="text-center bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 max-w-xs mx-auto">
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 最少需 2 名玩家，当前已加入: {players.length} 人
@@ -1521,7 +1600,9 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
               <div className="flex items-center space-x-3 text-amber-500">
                 <Sparkles className="w-6 h-6" />
                 <h3 className="text-lg font-black text-slate-800 dark:text-slate-100">
-                  任意百搭牌【-】插牌位置设定
+                    {gameState?.turnStatus === 'setup' && selectedJokerCard
+                      ? `${selectedJokerCard.color === 'black' ? '黑色' : '白色'}任意百搭牌【-】插牌位置设定`
+                      : '任意百搭牌【-】插牌位置设定'}
                 </h3>
               </div>
               

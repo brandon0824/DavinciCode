@@ -43,13 +43,16 @@ export async function POST(
       }
       try {
         const updatedState = await repositionJoker(roomId, username, cardId, targetSlotIndex);
-        return NextResponse.json({ success: true, gameState: updatedState, version: updatedState?.version });
+        // Return a viewer-scoped state; never send opponents' private card data
+        // back in the joker arrangement response.
+        const viewerState = await getGameState(roomId, username);
+        return NextResponse.json({ success: true, gameState: viewerState, version: viewerState?.version });
       } catch (error: any) {
         return NextResponse.json({ error: error.message || '调整百搭牌位置失败', code: error.code }, { status: error.code === 'VERSION_CONFLICT' ? 409 : 400 });
       }
     }
 
-    if (['draw', 'guess', 'pass', 'surrender', 'chat'].includes(action)) {
+    if (['draw', 'guess', 'pass', 'surrender', 'chat', 'confirm_setup'].includes(action)) {
       try {
         const gameState = await performGameAction(roomId, session.username, action, body);
         return NextResponse.json({ success: true, gameState, version: gameState?.version });
