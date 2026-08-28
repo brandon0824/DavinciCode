@@ -84,19 +84,35 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   // Wildcard Joker (-) Repositioning State
   const [selectedJokerCard, setSelectedJokerCard] = useState<GameCard | null>(null);
   const lastPromptedJokerRef = useRef<string | null>(null);
+  const promptedSetupJokersRef = useRef<Set<string>>(new Set());
+  const setupHandSignatureRef = useRef('');
+  const setupStatusRef = useRef<string | null>(null);
 
   // Restore the position prompt after a refresh/reconnect when the drawn card
   // is still awaiting the player's guess.
   useEffect(() => {
     const drawn = gameState?.lastDrawnCard;
     if (gameState?.turnStatus === 'setup' && gameState.setupPending?.includes(playerName || '')) {
-      const initialJoker = gameState.hands?.[playerName || '']?.find((card: any) => card.value === -1);
-      if (initialJoker && lastPromptedJokerRef.current !== `setup:${initialJoker.id}`) {
+      if (setupStatusRef.current !== 'setup') {
+        promptedSetupJokersRef.current.clear();
+        setupHandSignatureRef.current = '';
+        setupStatusRef.current = 'setup';
+      }
+      const ownHand = gameState.hands?.[playerName || ''] || [];
+      const signature = ownHand.map((card: any) => card.id).sort().join('|');
+      if (setupHandSignatureRef.current !== signature) {
+        setupHandSignatureRef.current = signature;
+        promptedSetupJokersRef.current.clear();
+      }
+      const initialJoker = ownHand.find((card: any) => card.value === -1 && !promptedSetupJokersRef.current.has(card.id));
+      if (initialJoker) {
+        promptedSetupJokersRef.current.add(initialJoker.id);
         lastPromptedJokerRef.current = `setup:${initialJoker.id}`;
         setSelectedJokerCard(initialJoker);
       }
       return;
     }
+    setupStatusRef.current = gameState?.turnStatus || null;
     if (drawn?.value === -1 && gameState?.currentTurn === playerName && gameState.turnStatus === 'guessing') {
       if (lastPromptedJokerRef.current !== drawn.id) {
         lastPromptedJokerRef.current = drawn.id;
@@ -776,7 +792,8 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                 </Button>
               )}
               {gameState.turnStatus === 'setup' && gameState.setupPending?.includes(playerName || '') &&
-                !(gameState.hands?.[playerName || ''] || []).some((card: any) => card.value === -1) && (
+                (gameState.hands?.[playerName || ''] || []).filter((card: any) => card.value === -1)
+                  .every((card: any) => gameState.setupArranged?.includes(`${playerName}:${card.id}`)) && (
                 <Button onClick={confirmPrivateSetup} className="bg-blue-600 hover:bg-blue-700 text-white text-xs py-1.5 px-4 font-bold rounded-xl active:scale-[0.96] transition-transform duration-100 self-end sm:self-auto">
                   确认手牌
                 </Button>

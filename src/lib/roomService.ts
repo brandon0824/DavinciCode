@@ -461,7 +461,7 @@ export async function getGameState(roomId: string, viewerUsername?: string): Pro
 
 // Update Game State
 export async function updateGameState(roomId: string, currentTurnUsername: string, gameData: any, expectedVersion?: number): Promise<boolean> {
-  const allowedKeys = new Set(['deck', 'hands', 'currentTurn', 'turnStatus', 'lastDrawnCard', 'winner', 'logs', 'chat', 'lastActionId', 'setupPending']);
+  const allowedKeys = new Set(['deck', 'hands', 'currentTurn', 'turnStatus', 'lastDrawnCard', 'winner', 'logs', 'chat', 'lastActionId', 'setupPending', 'setupArranged']);
   if (!gameData || typeof gameData !== 'object' || Object.keys(gameData).some((key) => !allowedKeys.has(key) && key !== 'version')) {
     throw new Error('对局状态字段不合法');
   }
@@ -575,7 +575,9 @@ export async function performGameAction(roomId: string, username: string, action
   } else if (action === 'confirm_setup') {
     if (data.turnStatus !== 'setup' || !data.setupPending?.includes(username)) throw new Error('当前无需确认手牌');
     const hasJoker = (data.hands[username] || []).some((card: any) => card.value === -1);
-    if (hasJoker) throw new Error('请先选择任意牌的位置');
+    const jokerIds = (data.hands[username] || []).filter((card: any) => card.value === -1).map((card: any) => `${username}:${card.id}`);
+    const arranged = Array.isArray(data.setupArranged) ? data.setupArranged : [];
+    if (hasJoker && jokerIds.some((id: string) => !arranged.includes(id))) throw new Error('请先选择所有任意牌的位置');
     data.setupPending = data.setupPending.filter((name: string) => name !== username);
     if (data.setupPending.length === 0) {
       data.turnStatus = 'drawing';
@@ -666,7 +668,9 @@ export async function repositionJoker(
     if (!Array.isArray(gameData.setupPending) || !gameData.setupPending.includes(username)) {
       throw new Error('你无需整理初始手牌');
     }
-    gameData.setupPending = gameData.setupPending.filter((name: string) => name !== username);
+    gameData.setupArranged = Array.isArray(gameData.setupArranged) ? gameData.setupArranged : [];
+    const arrangementKey = `${username}:${cardId}`;
+    if (!gameData.setupArranged.includes(arrangementKey)) gameData.setupArranged.push(arrangementKey);
     if (gameData.setupPending.length === 0) {
       gameData.turnStatus = 'drawing';
       gameData.logs = [...(gameData.logs || []), '所有玩家已完成私密手牌整理，游戏开始！'];

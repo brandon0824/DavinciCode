@@ -16,6 +16,7 @@ export interface GameData {
   winner: string | null;
   logs: string[];
   setupPending?: string[];
+  setupArranged?: string[];
 }
 
 // Display helper for card value: -1 is displayed as '-', otherwise number string
