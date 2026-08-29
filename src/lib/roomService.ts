@@ -333,7 +333,7 @@ export async function leaveRoom(roomId: string, username: string, isOfflineTimeo
       } else if (gameData.currentTurn === username && remainingUsernames.length > 0) {
         const nextUser = activeSurvivors[0] || remainingUsernames[0];
         gameData.currentTurn = nextUser;
-        gameData.turnStatus = 'drawing';
+        gameData.turnStatus = gameData.deck?.length === 0 ? 'guessing' : 'drawing';
         gameData.lastDrawnCard = null;
         gameData.logs.push(`由于 ${username} 退出，回合自动切换至 ${nextUser}。`);
         await updateGameState(roomId, gameData.currentTurn, gameData);
@@ -354,7 +354,10 @@ export async function getRoomPlayers(roomId: string): Promise<RoomPlayer[]> {
       `SELECT rp.username
        FROM room_players rp
        JOIN user_presence p ON rp.username = p.username
-       WHERE rp.room_id = $1 AND p.last_seen_at < NOW() - INTERVAL '20 seconds'`,
+       -- Mobile browsers routinely suspend JavaScript/SSE while users switch
+       -- apps. Allow a generous grace period before treating that as a real
+       -- disconnect; an explicit Leave action still removes immediately.
+       WHERE rp.room_id = $1 AND p.last_seen_at < NOW() - INTERVAL '5 minutes'`,
       [roomId]
     );
 
@@ -461,7 +464,7 @@ export async function getGameState(roomId: string, viewerUsername?: string): Pro
 
 // Update Game State
 export async function updateGameState(roomId: string, currentTurnUsername: string, gameData: any, expectedVersion?: number): Promise<boolean> {
-  const allowedKeys = new Set(['deck', 'hands', 'currentTurn', 'turnStatus', 'lastDrawnCard', 'winner', 'logs', 'chat', 'lastActionId', 'setupPending', 'setupArranged']);
+  const allowedKeys = new Set(['deck', 'hands', 'currentTurn', 'turnStatus', 'lastDrawnCard', 'winner', 'logs', 'chat', 'lastActionId', 'setupPending', 'setupArranged', 'killStats']);
   if (!gameData || typeof gameData !== 'object' || Object.keys(gameData).some((key) => !allowedKeys.has(key) && key !== 'version')) {
     throw new Error('对局状态字段不合法');
   }
@@ -519,12 +522,27 @@ export async function performGameAction(roomId: string, username: string, action
   if (actionId) data.lastActionId = actionId;
   const usernames = players.map(player => player.username);
   const log = (message: string) => { data.logs = [...(data.logs || []), message].slice(-100); };
+  const ensureKillStats = () => {
+    data.killStats = data.killStats || {};
+    for (const name of usernames) {
+      if (!data.killStats[name]) data.killStats[name] = { correct: 0, wrong: 0 };
+    }
+    return data.killStats as Record<string, { correct: number; wrong: number }>;
+  };
 
   // Initial setup is simultaneous; turn order only applies after setup ends.
   if (!['chat', 'surrender', 'confirm_setup'].includes(action) && data.turnStatus !== 'setup' && data.currentTurn !== username) throw new Error('当前不是你的回合');
   if (data.turnStatus === 'setup' && !['chat', 'confirm_setup'].includes(action)) throw new Error('正在私密整理手牌，请等待所有玩家完成');
   if (action === 'draw') {
     if (data.turnStatus !== 'drawing') throw new Error('当前不能摸牌');
+    // Legacy/edge state: normalize an exhausted deck to the guessing phase.
+    if (!Array.isArray(data.deck) || data.deck.length === 0) {
+      data.lastDrawnCard = null;
+      data.turnStatus = 'guessing';
+      const updated = await updateGameState(roomId, data.currentTurn, data, version);
+      if (!updated) throw Object.assign(new Error('对局状态已更新，请重新同步'), { code: 'VERSION_CONFLICT' });
+      return getGameState(roomId, username);
+    }
     if (payload.color !== 'black' && payload.color !== 'white') throw new Error('牌色参数错误');
     const index = data.deck.findIndex((card: any) => card.color === payload.color);
     if (index < 0) throw new Error('该颜色牌已摸完');
@@ -543,30 +561,34 @@ export async function performGameAction(roomId: string, username: string, action
     if (payload.targetUsername === username || !card || card.isRevealed || ![-1, ...Array.from({ length: 12 }, (_, i) => i)].includes(guessValue)) throw new Error('猜牌参数不合法');
     const display = guessValue === -1 ? '任意百搭牌 [-]' : `[${guessValue}]`;
     if (card.value === guessValue) {
+      ensureKillStats()[username].correct += 1;
       card.isRevealed = true;
-      log(`${username} 猜对了 ${payload.targetUsername} 的牌，数值确实是 ${display}！`);
+      const cardIndex = target.indexOf(card);
+      log(`${username} 猜对了 ${payload.targetUsername} 的第 ${cardIndex + 1} 张牌，数值确实是 ${display}！`);
       const active = activePlayers(data.hands);
       if (active.length === 1) { data.winner = username; data.turnStatus = 'ended'; log(`🎉 恭喜 ${username} 击败了所有对手，获得了最后的胜利！`); }
       else { data.turnStatus = 'guessing_again'; data.lastDrawnCard = null; }
     } else {
-      log(`${username} 猜测 ${payload.targetUsername} 的牌是 ${display}，但是猜错了！`);
+      ensureKillStats()[username].wrong += 1;
+      const cardIndex = target.indexOf(card);
+      log(`${username} 猜测 ${payload.targetUsername} 的第 ${cardIndex + 1} 张牌是 ${display}，但是猜错了！`);
       const ownHand = data.hands[username] || [];
       const penalty = data.lastDrawnCard ? ownHand.find((item: any) => item.id === data.lastDrawnCard.id) : ownHand.find((item: any) => !item.isRevealed);
       if (penalty) { penalty.isRevealed = true; log(`${username} 必须公开自己的一张牌。`); }
       const active = activePlayers(data.hands);
       if (active.length === 1) { data.winner = active[0]; data.turnStatus = 'ended'; log(`🎉 猜测失败后胜利者为 ${data.winner}`); }
-      else { data.currentTurn = nextActivePlayer(usernames, username, data.hands); data.turnStatus = 'drawing'; data.lastDrawnCard = null; log(`回合结束。现在是 ${data.currentTurn} 的回合。`); }
+      else { data.currentTurn = nextActivePlayer(usernames, username, data.hands); data.turnStatus = data.deck.length === 0 ? 'guessing' : 'drawing'; data.lastDrawnCard = null; log(`回合结束。现在是 ${data.currentTurn} 的回合。`); }
     }
   } else if (action === 'pass') {
     if (data.turnStatus !== 'guessing_again') throw new Error('当前不能跳过回合');
-    data.currentTurn = nextActivePlayer(usernames, username, data.hands); data.turnStatus = 'drawing'; data.lastDrawnCard = null;
+    data.currentTurn = nextActivePlayer(usernames, username, data.hands); data.turnStatus = data.deck.length === 0 ? 'guessing' : 'drawing'; data.lastDrawnCard = null;
     log(`${username} 选择结束猜测，跳过回合。现在是 ${data.currentTurn} 的回合。`);
   } else if (action === 'surrender') {
     (data.hands[username] || []).forEach((card: any) => { card.isRevealed = true; });
     log(`🏳️ 玩家 ${username} 选择主动认输，手牌已全部公开！`);
     const active = activePlayers(data.hands);
     if (active.length === 1) { data.winner = active[0]; data.turnStatus = 'ended'; log(`🎉 恭喜 ${data.winner} 获得了最后的胜利！`); }
-    else if (data.currentTurn === username) { data.currentTurn = nextActivePlayer(usernames, username, data.hands); data.turnStatus = 'drawing'; data.lastDrawnCard = null; }
+    else if (data.currentTurn === username) { data.currentTurn = nextActivePlayer(usernames, username, data.hands); data.turnStatus = data.deck.length === 0 ? 'guessing' : 'drawing'; data.lastDrawnCard = null; }
   } else if (action === 'chat') {
     const message = String(payload.message || '').trim();
     if (!message || message.length > 500) throw new Error('聊天内容不能为空且不能超过 500 个字符');

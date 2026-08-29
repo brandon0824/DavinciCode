@@ -61,10 +61,51 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
   // Game Play States
   const [gameState, setGameState] = useState<(GameData & { chat?: ChatMessage[] }) | null>(null);
+  const latestGameLog = gameState?.logs?.[gameState.logs.length - 1];
   const [guessTarget, setGuessTarget] = useState<{ username: string; cardId: string; cardIndex: number; color: 'black' | 'white' } | null>(null);
   const [guessValue, setGuessValue] = useState<string>('');
   const [surrenderModalOpen, setSurrenderModalOpen] = useState(false);
+  const [killBoardOpen, setKillBoardOpen] = useState(false);
   const [hasAcknowledgedGameOver, setHasAcknowledgedGameOver] = useState(false);
+  const [guessNotification, setGuessNotification] = useState<string | null>(null);
+  const guessSubmittingRef = useRef(false);
+  const lastNotifiedLogRef = useRef<string | null>(null);
+  const lastLogCountRef = useRef(0);
+  const hasSeenLogsRef = useRef(false);
+
+  // Show each newly received guess result as a transient notification on every
+  // connected player's page. The authoritative log is synchronized via SSE.
+  useEffect(() => {
+    const logs = gameState?.logs || [];
+    if (!gameState?.logs) return;
+    const previousCount = lastLogCountRef.current;
+    lastLogCountRef.current = logs.length;
+    // Do not replay old events on first opening/reconnect.
+    if (!hasSeenLogsRef.current) {
+      hasSeenLogsRef.current = true;
+      return;
+    }
+    const newLogs = logs.slice(Math.max(0, previousCount));
+    const guessLog = [...newLogs].reverse().find(log => log.includes('猜'));
+    if (!guessLog) return;
+    const logKey = `${logs.length}:${guessLog}`;
+    if (logKey === lastNotifiedLogRef.current) return;
+    lastNotifiedLogRef.current = logKey;
+    setGuessNotification(guessLog);
+    const timer = setTimeout(() => setGuessNotification(null), 15000);
+    return () => clearTimeout(timer);
+  }, [gameState?.logs?.length, latestGameLog]);
+
+  // Never carry a notification across game-over, lobby, or a fresh game's
+  // setup phase. Reset the log cursor so the new game does not replay old logs.
+  useEffect(() => {
+    if (room?.status !== 'playing' || gameState?.turnStatus === 'ended' || gameState?.turnStatus === 'setup') {
+      setGuessNotification(null);
+      lastNotifiedLogRef.current = null;
+      lastLogCountRef.current = gameState?.logs?.length || 0;
+      hasSeenLogsRef.current = Boolean(gameState?.logs);
+    }
+  }, [room?.status, gameState?.turnStatus]);
 
   // Reset acknowledgment when a fresh game is playing
   useEffect(() => {
@@ -124,16 +165,17 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   }, [gameState?.lastDrawnCard?.id, gameState?.currentTurn, gameState?.turnStatus, gameState?.setupPending?.join(','), gameState?.hands?.[playerName || '']?.map((card: any) => card.id).join(','), playerName]);
 
   useEffect(() => {
-    if (!guessTarget && !surrenderModalOpen && !selectedJokerCard) return;
+    if (!guessTarget && !surrenderModalOpen && !selectedJokerCard && !killBoardOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       setGuessTarget(null);
       setSurrenderModalOpen(false);
       setSelectedJokerCard(null);
+      setKillBoardOpen(false);
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [guessTarget, surrenderModalOpen, selectedJokerCard]);
+  }, [guessTarget, surrenderModalOpen, selectedJokerCard, killBoardOpen]);
 
   const submitJokerReposition = async (cardId: string, slotIndex: number) => {
     try {
@@ -268,6 +310,25 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
     connect();
     return () => { disconnect(); document.removeEventListener('visibilitychange', onVisibility); };
   }, [roomId, playerName]);
+
+  // Keep presence alive while this page is visible and immediately refresh it
+  // when returning from a background mobile app. Background tabs may suspend
+  // all timers, so the server-side grace period handles the suspended interval.
+  useEffect(() => {
+    if (!playerName) return;
+    const touchPresence = () => {
+      if (!document.hidden) void fetch('/api/online-count', { cache: 'no-store' }).catch(() => {});
+    };
+    touchPresence();
+    const interval = setInterval(touchPresence, 15000);
+    document.addEventListener('visibilitychange', touchPresence);
+    window.addEventListener('pageshow', touchPresence);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', touchPresence);
+      window.removeEventListener('pageshow', touchPresence);
+    };
+  }, [playerName]);
 
   // Fetch Room details and Players list
   const fetchRoomAndPlayers = async () => {
@@ -445,13 +506,31 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
   // 2. Submit Guess
   const submitGuess = async () => {
-    if (!gameState || !playerName || !guessTarget || guessValue === '') return;
+    if (!gameState || !playerName || !guessTarget || guessValue === '' || guessSubmittingRef.current) return;
+    // Guard against a stale modal after an SSE update changed the turn/card.
+    if (gameState.currentTurn !== playerName || !['guessing', 'guessing_again'].includes(gameState.turnStatus)) {
+      setGuessTarget(null); setGuessValue('');
+      return;
+    }
 
     const serverGuess = guessValue === '-' ? -1 : parseInt(guessValue, 10);
+    guessSubmittingRef.current = true;
     try {
       await sendGameAction('guess', { targetUsername: guessTarget.username, cardId: guessTarget.cardId, guessValue: serverGuess });
       setGuessTarget(null); setGuessValue('');
-    } catch (error) { setError(error instanceof Error ? error.message : '猜牌失败'); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '猜牌失败';
+      // Another player may have acted while this dialog was open. Refresh the
+      // authoritative state instead of showing a disruptive page error.
+      if (message.includes('猜牌参数不合法') || message.includes('当前不是你的回合') || message.includes('当前不能猜牌')) {
+        setGuessTarget(null); setGuessValue('');
+        await fetchSnapshot();
+      } else {
+        setError(message);
+      }
+    } finally {
+      guessSubmittingRef.current = false;
+    }
     return;
 
     /* Legacy client-side guess calculation retained only as historical reference; server is authoritative.
@@ -652,7 +731,16 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
   if (shouldShowGameBoard && gameState && gameState.hands) {
     const isMyTurn = gameState.currentTurn === playerName;
     const myHand = gameState.hands[playerName!] || [];
-    const opponents = players.filter(p => p.username !== playerName);
+    // A player is removed from room_players when leaving/offline, but their
+    // revealed hand remains in game state for the rest of the game. Keep such
+    // departed players visible so card positions remain stable for guesses.
+    const opponentNames = Array.from(new Set([
+      ...players.map(p => p.username),
+      ...Object.keys(gameState.hands || {})
+    ])).filter(name => name !== playerName);
+    const opponents = opponentNames.map(name => players.find(p => p.username === name) || ({
+      id: `departed:${name}`, username: name, isHost: false
+    } as Player));
 
     const blackLeft = gameState.deck.filter(c => c.color === 'black').length;
     const whiteLeft = gameState.deck.filter(c => c.color === 'white').length;
@@ -701,6 +789,14 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                   </span>
                 </div>
               )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setKillBoardOpen(true)}
+                className="text-xs px-2.5 py-1 sm:px-3 rounded-xl border-slate-200 dark:border-slate-700"
+              >
+                <Trophy className="w-3.5 h-3.5 mr-1 text-amber-500" strokeWidth={2} /> 击杀榜
+              </Button>
 
               <div className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 whitespace-nowrap bg-slate-100 dark:bg-slate-800/60 px-2 py-1 rounded-xl border border-slate-200 dark:border-slate-700/80">
                 回合: <span className="font-extrabold text-blue-600 dark:text-blue-400">{gameState.currentTurn}</span>
@@ -747,6 +843,20 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
             >
               <Clock className="w-4 h-4 fill-amber-950/20" strokeWidth={2.5} />
               <span>{turnWarningMsg}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {guessNotification && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              role="status" aria-live="polite"
+              className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-cyan-600 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-2xl shadow-2xl border-2 border-cyan-300 max-w-[90vw] text-center"
+            >
+              {guessNotification}
             </motion.div>
           )}
         </AnimatePresence>
@@ -826,6 +936,8 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                             <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50 rounded-full">
                               思考中
                             </span>
+                          ) : !players.some(p => p.username === opponent.username) ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50 rounded-full">已退出</span>
                           ) : null}
                         </div>
 
@@ -1050,6 +1162,29 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
 
         {/* Modal Guessing Dialog */}
         <AnimatePresence>
+          {killBoardOpen && (
+            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setKillBoardOpen(false)}>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold flex items-center"><Trophy className="w-5 h-5 mr-2 text-amber-500" />本局击杀榜</h3>
+                  <button aria-label="关闭击杀榜" onClick={() => setKillBoardOpen(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 text-xl">×</button>
+                </div>
+                <div className="space-y-2">
+                  {Object.entries(gameState.killStats || Object.fromEntries(Array.from(new Set([...players.map(p => p.username), ...Object.keys(gameState.hands || {})])).map(name => [name, { correct: 0, wrong: 0 }]))).sort(([, a], [, b]) => b.correct - a.correct).map(([username, stat], index) => (
+                    <div key={username} className="flex items-center justify-between rounded-xl bg-slate-100 dark:bg-slate-950/70 px-3 py-2.5 text-sm">
+                      <span className="font-bold"><span className="text-slate-400 mr-2">{index + 1}</span>{username}</span>
+                      <span className="text-xs"><b className="text-emerald-600 dark:text-emerald-400">猜中 {stat.correct}</b><span className="text-slate-400 mx-2">·</span><b className="text-red-500">猜错 {stat.wrong}</b></span>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            </div>
+          )}
           {guessTarget && (
             <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
               <motion.div
@@ -1229,6 +1364,19 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+
+                {/* Final kill statistics */}
+                <div className="bg-amber-50/70 dark:bg-amber-950/20 p-3 sm:p-4 rounded-2xl border border-amber-200 dark:border-amber-900/50 text-xs text-left space-y-2">
+                  <div className="font-bold text-amber-800 dark:text-amber-300 border-b border-amber-200 dark:border-amber-900/50 pb-2">🏆 本局击杀次数</div>
+                  <div className="space-y-1.5">
+                    {Object.entries(gameState.killStats || Object.fromEntries(Object.keys(gameState.hands).map(name => [name, { correct: 0, wrong: 0 }]))).sort(([, a], [, b]) => b.correct - a.correct).map(([uname, stat], index) => (
+                      <div key={uname} className="flex items-center justify-between py-1">
+                        <span className="font-bold text-slate-700 dark:text-slate-200">{index + 1}. {uname}</span>
+                        <span><b className="text-emerald-600 dark:text-emerald-400">猜中 {stat.correct}</b><span className="text-slate-400 mx-1.5">·</span><b className="text-red-500">猜错 {stat.wrong}</b></span>
+                      </div>
+                    ))}
                   </div>
                 </div>
 

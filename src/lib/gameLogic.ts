@@ -17,6 +17,7 @@ export interface GameData {
   logs: string[];
   setupPending?: string[];
   setupArranged?: string[];
+  killStats?: { [username: string]: { correct: number; wrong: number } };
 }
 
 // Display helper for card value: -1 is displayed as '-', otherwise number string
@@ -129,6 +130,7 @@ export function initGame(usernames: string[]): GameData {
   
   // Randomly pick who goes first
   const randomFirst = usernames[Math.floor(Math.random() * usernames.length)];
+  const killStats = Object.fromEntries(usernames.map(username => [username, { correct: 0, wrong: 0 }]));
   
   return {
     deck,
@@ -138,5 +140,6 @@ export function initGame(usernames: string[]): GameData {
     lastDrawnCard: null,
     winner: null,
     logs: ['游戏开始！包含了黑白两张【-】任意百搭牌。'],
+    killStats,
   };
 }
