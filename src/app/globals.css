@@ -131,6 +131,21 @@ button, [role="button"] {
   @apply bg-gray-100 border-gray-300;
 }
 
+/* Compact draw controls are used in the room header on every viewport. */
+.landscape-draw-controls { display: flex; }
+.landscape-decks { display: none; }
+
+/* Desktop and landscape tablet/phone: keep each opponent's hand on one row. */
+@media (min-width: 768px) {
+  .landscape-opponents > div { grid-template-columns: minmax(0, 1fr); }
+  .landscape-opponents .flex.flex-wrap {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
+  .landscape-opponents .relative.w-14 { flex: 0 0 auto; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -138,4 +153,76 @@ button, [role="button"] {
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Mobile landscape table mode: use the extra horizontal space like a compact
+   tabletop while keeping the portrait layout untouched. */
+@media (orientation: landscape) and (max-width: 1023px) {
+  .lobby-player-slots {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+  .lobby-player-slots > div {
+    min-height: 7rem;
+    padding: 0.65rem;
+  }
+  .lobby-player-slots > div > div {
+    width: 2.75rem;
+    height: 2.75rem;
+    margin-bottom: 0.45rem;
+  }
+  .game-over-overlay {
+    align-items: flex-start;
+    overflow-y: auto;
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+  .game-over-dialog {
+    max-height: calc(100dvh - 1.5rem);
+    overflow-y: auto;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  .game-board-shell {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 30vw);
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .landscape-play-area {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "status"
+      "opponents"
+      "myhand";
+    gap: 0.75rem;
+    min-width: 0;
+    align-content: start;
+  }
+
+  .landscape-status { grid-area: status; }
+  .landscape-opponents { grid-area: opponents; min-width: 0; }
+  /* Each opponent gets a dedicated horizontal row; never wrap their cards. */
+  .landscape-opponents > div { grid-template-columns: minmax(0, 1fr); }
+  .landscape-opponents > div > div { min-width: 0; }
+  .landscape-opponents .flex.flex-wrap { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 0.2rem; }
+  .landscape-opponents .relative.w-14 { flex: 0 0 auto; }
+  .landscape-draw-controls { display: flex !important; }
+  .landscape-decks { display: none; }
+  .landscape-decks > div { flex-direction: row; gap: 0.4rem; }
+  .landscape-decks > div > div { width: 50%; min-width: 0; padding: 0.45rem; gap: 0.25rem; }
+  .landscape-decks > div > div > div:first-child { min-width: 0; }
+  .landscape-decks .text-lg { font-size: 0.78rem; line-height: 1.05; white-space: normal; }
+  .landscape-decks button { padding: 0.35rem 0.55rem; font-size: 0.75rem; }
+  .landscape-my-hand { grid-area: myhand; grid-column: 1 / -1; min-width: 0; align-self: start; }
+  .landscape-my-hand .flex.flex-wrap { flex-wrap: nowrap; overflow: visible; padding-bottom: 0.15rem; }
+  .landscape-my-hand .relative.w-14 { flex: 1 1 0; min-width: 2.5rem; max-width: 4.2rem; }
+  .landscape-play-area > * { margin-bottom: 0 !important; }
+  .landscape-play-area .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 0; }
+}
+
+@media (orientation: portrait) and (max-width: 1023px) {
+  .landscape-draw-controls { display: flex; }
+  .landscape-decks { display: none; }
 }

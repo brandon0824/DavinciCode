@@ -862,13 +862,13 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
         </AnimatePresence>
 
         {/* Board Main Area */}
-        <div className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="game-board-shell flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
           
           {/* Game Play Area (Left 3 columns) */}
-          <div className="lg:col-span-3 flex flex-col space-y-6">
+          <div className="landscape-play-area lg:col-span-3 flex flex-col space-y-6">
             
             {/* Status Warning Banner */}
-            <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+            <div className={`landscape-status p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
               isMyTurn 
                 ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/60 text-blue-800 dark:text-blue-200' 
                 : 'bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
@@ -911,8 +911,16 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
             </div>
 
             {/* Opponents Area */}
-            <div className="space-y-3">
-              <h2 className="text-xs font-bold text-slate-400 dark:text-slate-500 tracking-wider uppercase">对手的手牌</h2>
+            <div className="landscape-opponents space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-xs font-bold text-slate-400 dark:text-slate-500 tracking-wider uppercase">对手的手牌</h2>
+                <div className="landscape-draw-controls items-center gap-1.5">
+                  <Button onClick={() => drawCard('black')} disabled={!isMyTurn || gameState.turnStatus !== 'drawing' || blackLeft === 0}
+                    className="bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold px-2.5 py-1 rounded-lg active:scale-[0.96]">黑{blackLeft}</Button>
+                  <Button onClick={() => drawCard('white')} disabled={!isMyTurn || gameState.turnStatus !== 'drawing' || whiteLeft === 0}
+                    className="bg-white hover:bg-slate-100 text-slate-950 border border-slate-300 text-xs font-bold px-2.5 py-1 rounded-lg active:scale-[0.96]">白{whiteLeft}</Button>
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {opponents.map((opponent) => {
                   const oppHand = gameState.hands[opponent.username] || [];
@@ -1005,7 +1013,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
             </div>
 
             {/* Draw Decks */}
-            <div className="bg-slate-100/50 dark:bg-slate-900/25 border border-slate-200 dark:border-slate-800/80 rounded-2xl p-4 sm:p-5">
+            <div className="landscape-decks bg-slate-100/50 dark:bg-slate-900/25 border border-slate-200 dark:border-slate-800/80 rounded-2xl p-4 sm:p-5">
               <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 tracking-wider uppercase mb-3">摸牌面板</h3>
               <div className="flex flex-col sm:flex-row gap-4">
                 {/* Black Deck */}
@@ -1041,7 +1049,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
             </div>
 
             {/* My Hand */}
-            <div className={`p-4 sm:p-5 rounded-2xl border transition-colors duration-200 shadow-sm ${
+            <div className={`landscape-my-hand p-4 sm:p-5 rounded-2xl border transition-colors duration-200 shadow-sm ${
               isEliminated(playerName!)
                 ? 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900/30'
                 : 'bg-white dark:bg-slate-900/40 border-slate-200 dark:border-slate-800'
@@ -1305,13 +1313,13 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
         {/* Modal: Game Over Victory / Settlement Dialog */}
         <AnimatePresence>
           {isGameOver && !hasAcknowledgedGameOver && (
-            <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+            <div className="game-over-overlay fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
               <motion.div
                 initial={{ opacity: 0, scale: 0.85, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.85, y: 20 }}
                 transition={{ type: 'spring', duration: 0.4, bounce: 0.2 }}
-                className="bg-white dark:bg-slate-900 border-2 border-amber-400 dark:border-amber-500/60 text-slate-800 dark:text-white rounded-3xl p-5 sm:p-7 max-w-md w-full shadow-2xl text-center space-y-4"
+                className="game-over-dialog bg-white dark:bg-slate-900 border-2 border-amber-400 dark:border-amber-500/60 text-slate-800 dark:text-white rounded-3xl p-5 sm:p-7 max-w-md w-full shadow-2xl text-center space-y-4"
               >
                 <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-300 text-amber-950 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/30">
                   <Trophy className="w-8 h-8" strokeWidth={2.5} />
@@ -1637,7 +1645,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
             )}
 
             {/* Player Slot Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+            <div className="lobby-player-slots grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
               {Array.from({ length: room?.maxPlayers || 4 }, (_, index) => {
                 const player = players[index];
                 const isEmpty = !player;
