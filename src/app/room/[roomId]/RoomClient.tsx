@@ -755,10 +755,10 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
         
         {/* Game Header */}
         <header className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 py-2.5 sm:py-3.5 px-3 sm:px-6 sticky top-0 z-40">
-          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 sm:gap-4">
+          <div className="max-w-7xl mx-auto flex flex-col items-stretch gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             
             {/* Left: Title & Room Code */}
-            <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+            <div className="flex min-w-0 items-center space-x-2 sm:space-x-3 shrink-0">
               <div aria-live="polite" className={`text-[11px] px-2 py-1 rounded-lg border ${isLiveConnected ? 'text-emerald-600 border-emerald-200 bg-emerald-50 dark:bg-emerald-950/30' : 'text-amber-700 border-amber-200 bg-amber-50 dark:bg-amber-950/30'}`}>
                 {isLiveConnected ? '实时同步' : '正在重连'}
               </div>
@@ -778,7 +778,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
             </div>
             
             {/* Right: Actions & Current Turn */}
-            <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+            <div className="flex w-full items-center justify-start gap-2 border-t border-slate-100 pt-2 dark:border-slate-800/70 sm:w-auto sm:justify-end sm:space-x-3 sm:gap-0 sm:border-t-0 sm:pt-0 shrink-0 flex-wrap">
               {/* User Battle Stats Display (Read-Only) */}
               {userStats && (
                 <div className="hidden md:flex items-center space-x-1.5 whitespace-nowrap bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-2.5 py-1 rounded-xl text-xs shadow-sm">
@@ -1494,15 +1494,16 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
       {/* Top Navigation */}
       <div className="bg-white/80 dark:bg-slate-900/60 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3 sm:space-x-6">
-              <Button
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-0">
+            <div className="flex min-w-0 items-center justify-start gap-3">
+              <div className="flex min-w-0 items-center space-x-3 sm:space-x-6">
+                <Button
                 onClick={handleLeaveRoom}
                 className="flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-950 dark:hover:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 h-9 px-3 rounded-xl active:scale-[0.96] transition-transform duration-100"
-              >
-                <ArrowLeft className="w-4 h-4" strokeWidth={2} />
-                <span className="hidden sm:inline">返回大厅</span>
-              </Button>
+                >
+                  <ArrowLeft className="w-4 h-4" strokeWidth={2} />
+                  <span className="hidden sm:inline">返回大厅</span>
+                </Button>
               
               <div className="w-px h-6 bg-slate-200 dark:bg-slate-800"></div>
               
@@ -1521,9 +1522,15 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                   )}
                 </div>
               </div>
+              </div>
+
+              <div className="flex shrink-0 items-center space-x-1.5 text-slate-500 dark:text-slate-400 text-sm">
+                <Users className="w-4 h-4" strokeWidth={2} />
+                <span className="font-bold">{players.length}/{room?.maxPlayers}</span>
+              </div>
             </div>
 
-            <div className="flex items-center space-x-2 sm:space-x-4">
+            <div className="flex w-full items-center justify-start gap-2 border-t border-slate-100 pt-2 dark:border-slate-800/70 sm:w-auto sm:justify-end sm:space-x-4 sm:gap-0 sm:border-t-0 sm:pt-0 flex-wrap">
               {/* User Battle Stats Display (Read-Only) */}
               {userStats && (
                 <div className="hidden sm:flex items-center space-x-1.5 whitespace-nowrap bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-3 py-1 rounded-xl text-xs shadow-sm">
@@ -1535,11 +1542,6 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                 </div>
               )}
 
-              <div className="flex items-center space-x-1.5 text-slate-500 dark:text-slate-400 text-sm">
-                <Users className="w-4 h-4" strokeWidth={2} />
-                <span className="font-bold">{players.length}/{room?.maxPlayers}</span>
-              </div>
-              
               {/* Theme Toggle Button */}
               <Button
                 onClick={toggleTheme}
@@ -1550,7 +1552,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                 {theme === 'light' ? <Moon className="w-4 h-4" strokeWidth={2} /> : <Sun className="w-4 h-4 text-yellow-500" strokeWidth={2} />}
               </Button>
 
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-2 shrink-0">
                 {currentPlayer?.isHost && players.length >= 2 && (
                   <Button
                     onClick={handleStartGame}
