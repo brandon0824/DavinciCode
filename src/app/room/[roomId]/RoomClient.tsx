@@ -862,13 +862,13 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
         </AnimatePresence>
 
         {/* Board Main Area */}
-        <div className="game-board-shell flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="game-board-shell flex-1 max-w-7xl mx-auto w-full p-2.5 sm:p-6 grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
           
           {/* Game Play Area (Left 3 columns) */}
-          <div className="landscape-play-area lg:col-span-3 flex flex-col space-y-6">
+          <div className="landscape-play-area lg:col-span-3 flex flex-col space-y-4 sm:space-y-6">
             
             {/* Status Warning Banner */}
-            <div className={`landscape-status p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+            <div className={`landscape-status p-3 sm:p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
               isMyTurn 
                 ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-200 dark:border-blue-800/60 text-blue-800 dark:text-blue-200' 
                 : 'bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300'
@@ -1057,7 +1057,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 tracking-wider uppercase flex items-center">
                   <User className="w-4 h-4 mr-1.5 text-blue-600 dark:text-blue-400" strokeWidth={2} />
-                  我的手牌 ({playerName})
+                  我的手牌
                 </h3>
                 {isEliminated(playerName!) && (
                   <span className="text-red-600 dark:text-red-400 text-[10px] font-bold bg-red-100 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 px-3 py-0.5 rounded-full">
@@ -1124,7 +1124,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
           {/* Activity Logs & Chat Panel */}
           <div className="bg-white dark:bg-slate-900/30 border border-slate-200 dark:border-slate-800/80 rounded-3xl p-4 flex flex-col h-[480px] lg:h-auto overflow-hidden shadow-sm">
             <h3 className="text-xs font-bold text-slate-400 dark:text-slate-300 mb-3 tracking-wider uppercase pb-2 border-b border-slate-200 dark:border-slate-800">
-              战局日志 & 房间聊天
+              动态与聊天
             </h3>
 
             {/* Logs & Messages Box */}
@@ -1499,6 +1499,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
               <div className="flex min-w-0 items-center space-x-3 sm:space-x-6">
                 <Button
                 onClick={handleLeaveRoom}
+                aria-label="返回大厅并离开房间"
                 className="flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-950 dark:hover:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 h-9 px-3 rounded-xl active:scale-[0.96] transition-transform duration-100"
                 >
                   <ArrowLeft className="w-4 h-4" strokeWidth={2} />
@@ -1562,14 +1563,15 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                     开赛
                   </Button>
                 )}
-                
+
                 <Button
                   onClick={handleLeaveRoom}
-                  className="bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 dark:bg-red-950/60 dark:text-red-400 dark:border-red-900/50 dark:hover:bg-red-900/40 text-xs h-8 px-3 rounded-xl active:scale-[0.96] transition-transform duration-100"
+                  className="hidden sm:flex bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 dark:bg-red-950/60 dark:text-red-400 dark:border-red-900/50 dark:hover:bg-red-900/40 text-xs h-8 px-3 rounded-xl active:scale-[0.96] transition-transform duration-100"
                 >
                   <LogOut className="w-3.5 h-3.5 mr-1.5" strokeWidth={2} />
                   离开
                 </Button>
+
               </div>
             </div>
           </div>
@@ -1577,15 +1579,15 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
       </div>
 
       {/* Waiting Room Body */}
-      <div className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 py-12 w-full flex flex-col items-center justify-center">
+      <div className="flex-1 max-w-5xl mx-auto px-3 sm:px-6 py-6 sm:py-12 w-full flex flex-col items-center justify-center">
         <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 max-w-4xl w-full shadow-xl rounded-3xl p-2 sm:p-4">
-          <CardContent className="p-6 sm:p-8">
-            <div className="text-center mb-10">
+          <CardContent className="p-4 sm:p-8">
+            <div className="text-center mb-6 sm:mb-10">
               <h2 className="text-2xl sm:text-3xl font-extrabold text-blue-600 dark:text-blue-400 mb-2.5 tracking-wide">
                 等待游戏开始
               </h2>
               <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm">
-                分享房间号给朋友，当人数不少于 2 人时，房主即可点击上方“开赛”启动对局
+                分享房间号，满 2 人后房主即可点击“开赛”
               </p>
             </div>
 
@@ -1604,9 +1606,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                     <div className="text-sm font-extrabold text-slate-800 dark:text-slate-200">
                       上一局获胜者：<span className="text-amber-600 dark:text-amber-400 font-black text-base">{gameState.winner}</span> 🏆
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                      同房间所有玩家已自动返回房间待命，房主点击【开赛】即可直接开始下一局对决
-                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">所有玩家已返回房间，可开始下一局</p>
                   </div>
                 </div>
                 <span className="text-xs text-amber-700 dark:text-amber-300 font-bold bg-amber-100 dark:bg-amber-950/60 px-3 py-1 rounded-full border border-amber-200 dark:border-amber-800/80 whitespace-nowrap shrink-0">
@@ -1615,39 +1615,8 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
               </motion.div>
             )}
 
-            {/* Host-Only Full Room (4 Players) Game Ready Notification Banner */}
-            {currentPlayer?.isHost && players.length >= (room?.maxPlayers || 4) && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-blue-500/15 border-2 border-amber-400/50 dark:border-amber-500/40 rounded-2xl p-4 sm:p-5 mb-8 shadow-lg shadow-amber-500/10 flex flex-col sm:flex-row items-center justify-between gap-4"
-              >
-                <div className="flex items-center space-x-3 text-left">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center flex-shrink-0">
-                    <Sparkles className="w-6 h-6" strokeWidth={2.5} />
-                  </div>
-                  <div>
-                    <h4 className="font-extrabold text-base sm:text-lg text-slate-800 dark:text-slate-100 flex items-center">
-                      <span>房间已集齐 4 人，游戏待开始！</span>
-                    </h4>
-                    <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-0.5">
-                      全员已就位！请房主点击【立即开赛】启动全新达芬奇密码对决
-                    </p>
-                  </div>
-                </div>
-
-                <Button
-                  onClick={handleStartGame}
-                  className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm px-6 py-2.5 rounded-xl shadow-lg shadow-emerald-500/20 active:scale-[0.96] transition-transform duration-100 flex items-center justify-center space-x-2"
-                >
-                  <Play className="w-4 h-4 fill-current" />
-                  <span>立即开赛</span>
-                </Button>
-              </motion.div>
-            )}
-
             {/* Player Slot Grid */}
-            <div className="lobby-player-slots grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+            <div className="lobby-player-slots grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
               {Array.from({ length: room?.maxPlayers || 4 }, (_, index) => {
                 const player = players[index];
                 const isEmpty = !player;
@@ -1655,7 +1624,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                 return (
                   <div
                     key={index}
-                    className={`relative p-5 sm:p-6 rounded-2xl border-2 transition-transform duration-100 text-center flex flex-col items-center justify-center min-h-[140px] ${
+                    className={`relative p-4 sm:p-6 rounded-2xl border-2 transition-transform duration-100 text-center flex flex-col items-center justify-center min-h-[120px] sm:min-h-[140px] ${
                       isEmpty
                         ? 'bg-slate-50 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 border-dashed text-slate-400 dark:text-slate-600'
                         : 'bg-blue-50/50 dark:bg-slate-900 border-blue-100 dark:border-blue-900/50 text-slate-800 dark:text-slate-100 shadow-sm shadow-blue-500/5'
@@ -1697,7 +1666,7 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                   </span>
-                  <span>📢 房间动态提示</span>
+                  <span>📢 房间动态</span>
                 </div>
                 <div className="space-y-1 max-h-24 overflow-y-auto text-xs font-mono text-slate-600 dark:text-slate-300">
                   {gameState.logs.slice(-4).map((log, i) => (
@@ -1716,7 +1685,6 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
                   <span className="w-2 h-2 rounded-full bg-emerald-500" />
                   <span>房间聊天</span>
                 </div>
-                <span className="text-[10px] text-slate-400 dark:text-slate-500">等待期间可交流</span>
               </div>
               <div ref={chatContainerRef} className="h-36 overflow-y-auto space-y-2 pr-1 scrollbar-thin" aria-live="polite">
                 {(gameState?.chat || []).length === 0 ? (
@@ -1752,11 +1720,6 @@ export default function RoomPage({ params }: { params: { roomId: string } }) {
               </form>
             </div>
 
-            <div className="text-center bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80 rounded-xl p-3 max-w-xs mx-auto">
-              <span className="text-xs text-slate-500 dark:text-slate-400">
-                最少需 2 名玩家，当前已加入: {players.length} 人
-              </span>
-            </div>
           </CardContent>
         </Card>
       </div>
