@@ -18,7 +18,7 @@ This project adopts a **Serverless-friendly** and **self-contained** full-stack 
 |   - View Layer: React 18 / Tailwind CSS / Framer Motion        |
 |   - Pages: Auth / Game Lobby / Room Panel / Stats (/stats)     |
 |   - Auth Layer: sessionStorage (Persistent Session) / Gatekeeper|
-|   - Data Sync: HTTP Polling (Data-driven Short Polling)        |
+|   - Data Sync: SSE snapshots + HTTP game actions               |
 +----------------------------------------------------------------+
                                |
                                | HTTP (JSON API, Port: 60824)
@@ -53,7 +53,7 @@ Follows clean separation of concerns:
   * **Tailwind CSS**: Utility-first CSS framework for dark-mode panels, backdrop blur effects, and mobile responsive non-wrapping rules (`whitespace-nowrap`).
   * **Framer Motion**: Lightweight animation library for card sorting slide-ins, draw highlights, guessing modal, and timeout toasts.
   * **Lucide React**: Vector SVG icons (Crown, Users, Lock, Flag, Trophy, CheckCircle2, XCircle, etc.).
-  * **Fetch API Polling**: Periodic polling (Lobby 3s, Game Room 1.5s) to pull and synchronize real-time states.
+  * **SSE + Fetch API**: The lobby and room subscribe through `EventSource` to receive server-sent snapshots; Fetch is used for initial snapshots and explicit game actions. The client reconnects when an SSE connection closes or fails.
 
 ### 2. Server-Side (Backend)
 * **Environment**: Node.js 22 Runtime (Port: 60824).
@@ -125,24 +125,29 @@ Follows clean separation of concerns:
    - Permission Isolation: `admin` is blocked from creating or joining rooms on both frontend and backend.
 3. **🃏 Black & White Wildcard Joker (`-`) System & Free Insertion Placement**:
    - Deck size expanded from 24 to **26 cards** (including 1 Black Wildcard Joker `-` and 1 White Wildcard Joker `-`).
+   - A match starts in a simultaneous **private setup** phase. Every player arranges and confirms their opening hand; opponents receive an empty hand projection until setup completes, preventing wildcard information leaks.
    - Standard cards (0-11) auto-sort in ascending order. Wildcards (`-`) can be **freely inserted into any slot index** (far left, between cards, or far right) when drawn or during turn via interactive "`⇄ Reposition`" controls.
    - Guessing dialog includes a dedicated `- (Wildcard Joker)` decision button.
-3. **🎉 Game Over Settlement Modal without Auto-Redirect**:
+   - When both decks are exhausted, the next active player enters the guessing phase directly instead of being blocked by a draw action.
+4. **🛡️ Viewer-Scoped Game State & Match Guess Statistics**:
+   - Unrevealed opponent cards are sent as opaque per-slot tokens with only color and reveal state; deck card identities and values are also concealed. The complete state is disclosed only after game end.
+   - `killStats` records each player's correct and wrong guesses for the current match and powers the in-room and settlement guess leaderboard.
+5. **🎉 Game Over Settlement Modal without Auto-Redirect**:
    - Discloses all players' final hand card values and wildcards upon game completion.
    - Requires explicit player click on `[Return to Waiting Room (Prepare Next Round)]` to transition to the room waiting lobby.
-4. **Automated Stats Settlement & Leaderboard (`/stats`)**:
+6. **Automated Stats Settlement & Leaderboard (`/stats`)**:
    - Automatically inserts match outcome records into `match_history` and updates user win/loss counters upon game end.
    - The `/stats` page displays personal battle logs and global leaderboard (rank #1 highlighted in gold 🥇).
-5. **🟢 Global Real-Time Online Counter & 15s Heartbeat Detection**:
+7. **🟢 Global Real-Time Online Counter & 15s Heartbeat Detection**:
    - Footer component sends a silent heartbeat every 4 seconds. The online count API checks active heartbeats within 15 seconds; closing tabs automatically deducts offline users within 15 seconds.
-6. **⚠️ 20-Second Room Player Offline Auto-Cleanup & Dynamic Event Logs**:
-   - Room polling checks player heartbeat timestamps and automatically kicks users who are inactive for >20s (e.g. tab closed), freeing room slots and transferring host status automatically.
+8. **⚠️ 5-Minute Room Player Offline Auto-Cleanup & Dynamic Event Logs**:
+   - Room reads check player heartbeat timestamps and automatically kick users who are inactive for >5 minutes (e.g. tab closed), freeing room slots and transferring host status automatically. This grace period accommodates mobile browsers that suspend background tabs.
    - Waiting room lobby displays a **`📢 Room Event Log`** stream tracking player joins (`📢`), leaves (`🚪`), and offline cleanups (`⚠️`).
-7. **🔑 Room Host Password Bypass for Self-Created Rooms**:
+9. **🔑 Room Host Password Bypass for Self-Created Rooms**:
    - Room hosts returning to their own password-protected rooms bypass the password modal on frontend and backend.
-8. **30-Second Multiples Inaction Reminder**:
+10. **30-Second Multiples Inaction Reminder**:
    - Triggers an active timer during the player's turn. Inaction exceeding 30s, 60s, 90s... prompts an animated warning toast.
-9. **Containerization & Automatic DB Setup (`Dockerfile` & `entrypoint.sh`)**:
+11. **Containerization & Automatic DB Setup (`Dockerfile` & `entrypoint.sh`)**:
    - Docker Compose runs Next.js as a non-root `node` process and PostgreSQL in its official separate service. Data persistence is ensured via the host directory mount configured by `PG_DATA_DIR`.
 
 ---

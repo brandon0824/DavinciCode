@@ -24,6 +24,7 @@ interface Room {
 interface UserSession {
   id?: string | number;
   username: string;
+  role?: 'player' | 'admin';
   totalGames: number;
   totalWins: number;
   totalLosses: number;
@@ -109,6 +110,12 @@ export default function HomePage() {
         if (parsed && parsed.username) {
           setCurrentUser(parsed);
           setName(parsed.username);
+          // An administrator should never land on the player lobby, including
+          // when returning to the root page with an existing session.
+          if (parsed.role === 'admin' || parsed.username === 'admin') {
+            router.replace('/admin');
+            return;
+          }
           refreshUserData(parsed.username);
         }
       }
@@ -177,6 +184,7 @@ export default function HomePage() {
         const userSession: UserSession = {
           id: data.user.id,
           username: data.user.username,
+          role: data.user.role === 'admin' || data.user.username === 'admin' ? 'admin' : 'player',
           totalGames: data.user.totalGames || 0,
           totalWins: data.user.totalWins || 0,
           totalLosses: data.user.totalLosses || 0,
@@ -185,6 +193,10 @@ export default function HomePage() {
         setCurrentUser(userSession);
         setName(userSession.username);
         sessionStorage.setItem('davinci_user', JSON.stringify(userSession));
+        if (userSession.role === 'admin') {
+          router.replace('/admin');
+          return;
+        }
         setSuccess(authTab === 'login' ? `欢迎回来，${userSession.username}！` : `注册成功！欢迎加入，${userSession.username}！`);
         setAuthPassword('');
         if (data.user.mustChangePassword) setChangePasswordOpen(true);

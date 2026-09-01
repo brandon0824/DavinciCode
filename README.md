@@ -27,9 +27,14 @@ Project Documents:
   * **Exclusive Admin Dashboard (`/admin`)**: Accessible exclusively by `admin`. Features responsive data tables and summary metrics displaying all registered users: Username, Wins/Losses/Total Games, Win Rate %, 15s Heartbeat Online Status (`🟢 Online / ⚪ Offline`), Registration Time, and Last Active Time.
   * **Permission Isolation Guard**: The `admin` user is dedicated to server management and has zero room creation or game battle permissions. Attempting to create or join rooms triggers automatic error prevention.
 
-* **🃏 Black & White Wildcard Jokers (`-` Cards) & Free Position Placement**:
+* **🃏 Private Opening Setup, Black & White Wildcard Jokers (`-` Cards) & Free Position Placement**:
   * **26 Cards Total Deck**: Black 0-11 (12 cards) + White 0-11 (12 cards), plus **1 Black Wildcard Joker `-`** and **1 White Wildcard Joker `-`**.
+  * **Private Setup Before the First Turn**: After a match starts, every player privately arranges any opening wildcard and confirms their hand. Opponents receive no hand data during this phase, so readiness timing cannot reveal who drew a wildcard.
   * **Free Slot Placement & Position Adjustments**: Following official DaVinci Code rules, when drawing or holding a Wildcard Joker (`-`), players can **freely choose its insertion slot** anywhere in their hand (far left, between cards, or far right) to trick opponents. Provides interactive "`⇄ Reposition`" controls on hand cards.
+
+* **🏆 Per-Match Guess Leaderboard & Result Notifications**:
+  * Each successful and failed guess is counted for the current match and displayed in the in-room **Guess Leaderboard** and final settlement review.
+  * New guess results are shown to all connected players as a transient notification, while the room log remains the authoritative history.
 
 * **🏆 Personal Battle History & Global Leaderboard (`/stats`)**:
   * Permanently records player statistics (`total_games`, `total_wins`, `total_losses`) in the `users` table and match details in `match_history`.
@@ -50,8 +55,8 @@ Project Documents:
   * Displays **`🟢 Active Online Players: X`** with a pulsing emerald status indicator at the footer of all pages.
   * Silent client heartbeat runs every 4 seconds. Closing browser tabs automatically deducts offline users within 15 seconds.
 
-* **⚠️ 20-Second Room Disconnection Auto-Cleanup & Room Event Logs**:
-  * Automatically removes inactive room players who close Chrome tabs or lose connection for over 20 seconds, freeing room slots.
+* **⚠️ 5-Minute Room Disconnection Auto-Cleanup & Room Event Logs**:
+  * Automatically removes inactive room players who close Chrome tabs or lose connection for over 5 minutes, freeing room slots. The longer grace period avoids removing users whose mobile browser temporarily suspends background JavaScript.
   * Host status is seamlessly transferred to remaining room members if the host disconnects.
   * Waiting room lobby displays a **`📢 Room Event Log`** stream tracking player joins (`📢`), leaves (`🚪`), and offline cleanups (`⚠️`).
   * Chat messages are deleted immediately when a room is closed, including when the last player leaves.
@@ -174,12 +179,12 @@ npm start
 2. **Create or Join Room**:
    * Logged-in users can create custom rooms (with optional password protection) or join available rooms in the lobby list.
 3. **Lobby Waiting & Game Start**:
-   * When 2-4 players assemble, the host can click "Start Game" to launch the match.
+   * When 2-4 players assemble, the host can click "Start Game" to launch the match. Each player then privately arranges any opening wildcard and confirms their hand; normal turns begin only after everyone has confirmed.
 4. **Turn Actions**:
-   * **Draw Card**: Draw 1 card from the Black or White deck. Standard cards auto-sort in ascending order (Black left of White). Wildcard Jokers (`-`) are placed on the right.
+   * **Draw Card**: Draw 1 card from the Black or White deck. Standard cards auto-sort in ascending order (Black left of White). Wildcard Jokers (`-`) can be placed in a chosen slot. Once both decks are empty, turns proceed directly to guessing.
    * **Guess Card**: Click an opponent's hidden card and guess its value (`0`-`11` or `- Wildcard Joker`).
      - **Correct**: Target card is revealed. Player can guess again or pass turn.
      - **Wrong**: As penalty, player's newly drawn card is forcibly revealed, ending the turn.
    * **Surrender & Elimination**: Players with all cards revealed are eliminated. The last survivor wins.
 5. **Settlement & Review**:
-   * All players' final hands are disclosed in the game over modal. Click `[Return to Waiting Room (Prepare Next Round)]` to return to the room lobby.
+   * All players' final hands and the match guess leaderboard are disclosed in the game over modal. Click `[Return to Waiting Room (Prepare Next Round)]` to return to the room lobby.

@@ -1,207 +1,119 @@
-# 游戏页面加载与实时同步优化计划
+# 游戏加载、实时同步与并发稳定性优化计划
 
-本文档记录本次对仓库中“大厅 → 房间 → 游戏棋盘”流程的分析结果，重点解决首屏加载慢、重复请求、实时同步开销大以及加载状态不友好等问题。
+本文档基于当前代码实现整理可执行的优化方向，重点覆盖首页/大厅、房间首屏、对局同步、数据库访问和移动端体验。优化应以不改变游戏规则及牌面隐私为前提。
 
-## 一、当前流程
+## 一、当前实现概览
 
-### 大厅
+### 首页与大厅
 
-入口：`src/app/page.tsx`、`src/app/HomeClient.tsx`。
+- `src/app/page.tsx` 直接渲染大型客户端组件 `HomeClient.tsx`，登录、注册、房间表单和房间列表一次性进入浏览器包。
+- `HomeClient.tsx` 挂载时会读取 `sessionStorage`、刷新用户资料、请求 `/api/rooms`，随后再建立 `/api/rooms/events` SSE；大厅存在首次请求与 SSE 首次推送重复获取房间列表的机会。
+- 创建/加入成功后的跳转、用户资料刷新和房间列表更新互相独立，网络较慢时可能出现重复点击或旧列表覆盖新状态。
 
-```text
-打开首页 → 下载/ hydration HomeClient → 读取 sessionStorage
-→ GET /api/rooms → 建立 /api/rooms/events SSE → 显示房间列表
-```
+### 房间与对局
 
-初始化同时执行普通请求和 SSE（`HomeClient.tsx:255-263`），而大厅 SSE 建立后还会立即 `push()`，因此房间列表会被重复查询。
+- `RoomClient.tsx` 约 1,800 行，包含等待大厅、棋盘、聊天、多个弹窗、动画和 SSE 生命周期，首屏 hydration 与后续重渲染成本较高。
+- 房间进入时先调用 `/snapshot`，然后建立 `/events` SSE；SSE 每次推送都会并行查询房间、玩家、游戏状态和用户资料，并序列化完整 payload。
+- 服务端 SSE 约 25 秒主动关闭，客户端 2 秒后重连；这会产生周期性全量查询。
+- `getGameState()` 每次读取都会查询最近 200 条聊天消息，并把牌堆、手牌、日志、聊天一起放入 JSONB 快照；普通猜牌也可能携带大量无关数据。
+- `updateGameState()` 使用整份 JSONB 复制、序列化和写回；并发动作靠 `version` 检查，冲突后客户端需要重新获取快照。
 
-### 房间
+## 二、P0：先改善首屏和动作响应
 
-入口：`src/app/room/[roomId]/page.tsx`、`RoomClient.tsx`。
+### 1. 合并首屏数据源
 
-```text
-打开 /room/{roomId} → 下载约 80KB RoomClient 并 hydration
-→ 从 URL/sessionStorage 读取玩家名
-→ GET /snapshot → 建立 SSE → SSE 再次推送完整快照
-→ 关闭 Loading，渲染等待页或游戏棋盘
-```
+统一采用“首次 HTTP 快照 + SSE 只推送后续变化”，或“由 SSE 返回首个快照”其中一种模式。客户端必须保证初始化阶段只保留一个有效数据源，避免 `/api/rooms` + SSE、`/snapshot` + SSE 各查询一次。
 
-`page.tsx` 只返回客户端组件，服务端不会提前输出房间标题、玩家列表或棋盘骨架。
+验收：首次进入大厅/房间时，初始化状态请求最多一次；首屏不会因 SSE 的旧快照覆盖刚完成的动作。
 
-## 二、P0：首屏加载优化
+### 2. 取消请求、竞态与重复提交
 
-### 1. 消除首次重复请求
+为 `fetchSnapshot`、用户资料、房间列表和加入/创建动作添加 `AbortController` 与请求序号；组件卸载或切换房间时取消旧请求。创建、加入、摸牌、猜牌、确认手牌等按钮使用统一 pending 状态，动作完成前禁止重复提交。
 
-涉及：
+对 SSE payload 和动作响应使用 `version` 丢弃旧状态；收到 `409 VERSION_CONFLICT` 时只执行一次退避重试和最新快照同步，避免多个重试风暴。
 
-- `RoomClient.tsx:224-246`
-- `src/app/api/rooms/[roomId]/events/route.ts:24-41`
-- `HomeClient.tsx:255-263`
+### 3. 缩短创建/加入到可见房间的路径
 
-当前房间页先请求 `/snapshot`，SSE 连接后又执行一次完整 `push()`；大厅页也存在相同问题。
+创建房间接口当前先 `createRoom` 再 `joinRoom`，可在服务端合并为一个事务，成功后直接返回房间和成员初始数据。客户端成功后立即跳转，目标页显示 Toast/状态提示，不在原页面等待人为延迟。
 
-方案：
+## 三、P1：降低 SSE、渲染和数据库压力
 
-- 选择 SSE 首次返回快照，客户端删除额外 `fetchSnapshot()`；或
-- 保留普通快照，SSE 增加 `skipInitial=1`，只监听后续事件。
-- 初始化阶段只允许一个数据源负责首屏状态。
+### 1. SSE 增量化与 single-flight
 
-验收：首次进入大厅或房间时，网络面板只出现一次有效初始化请求。
+`src/app/api/rooms/[roomId]/events/route.ts` 当前每个事件都查询四类数据并发送完整快照。增加房间版本号与 50–100ms debounce/single-flight：短时间内多个动作只触发一次推送，并保证同一房间同一时刻只有一个 `push()` 查询在途。
 
-### 2. 去掉创建/加入房间的人为延迟
+按类型拆分事件：成员变化、回合变化、聊天、日志和游戏结束分别推送；客户端按版本合并。聊天和日志只发送新增项，避免重复传输历史内容。
 
-涉及：
+### 2. 延长 SSE 生命周期并支持续传
 
-- `HomeClient.tsx:335-340`（创建后延迟 1 秒）
-- `HomeClient.tsx:391-395`（加入后延迟 800ms）
+保留心跳但取消固定 25 秒断开，或至少使用指数退避（2s、4s、8s、16s）并支持 `Last-Event-ID`/房间版本续传。页面隐藏时暂停连接，恢复时只拉取最新版本。反向代理必须关闭 SSE 缓冲并设置合理的 idle timeout。
 
-请求成功后应立即 `router.push()`，成功提示放在目标页或使用 Toast。
+### 3. 拆分房间客户端组件
 
-### 3. 使用 Skeleton 替代全屏 Spinner
+将 `RoomClient.tsx` 拆成 `RoomHeader`、`PlayerList`、`GameBoard`、`Hand`、`ChatPanel`、`GameOverModal`、`JokerSetupModal` 等组件。低频模块（帮助、认输、结算、击杀榜）使用动态 import；保持游戏核心交互组件轻量，减少 hydration 和无关状态变化导致的整页重渲染。
 
-涉及：`RoomClient.tsx:575-583`。
+使用 `React.memo`、稳定 callback 和按字段订阅，避免每次 SSE 更新都重绘所有对手手牌、聊天消息和弹窗。聊天列表可限制渲染窗口，日志/聊天超过阈值时使用虚拟列表或分页。
 
-先渲染顶部标题、房间号、玩家列表、棋盘和聊天栏骨架，并按阶段显示“连接房间 / 同步玩家 / 同步对局”。首次渲染动画使用 `AnimatePresence initial={false}`，避免首帧动画阻塞（better-ui）。
+### 4. 缩小快照和查询返回体
 
-## 三、P1：降低实时同步和数据库压力
+将聊天从 `game_states.game_data` 中彻底分离，使用 `room_messages` 的 cursor 分页/增量接口；游戏快照只保留牌堆、手牌、回合和必要日志。普通对局事件不要返回完整聊天、完整牌堆和用户资料。
 
-### 1. 读取接口不应清理离线玩家
+未公开牌继续只返回 opaque slot token、颜色和公开状态；牌堆永不返回内部 card id/value。仅在 `ended` 状态返回完整手牌。为 `/snapshot` 与 SSE viewer projection 编写隐私回归测试。
 
-涉及：`src/lib/roomService.ts:351-374`。
+### 5. 避免读取接口触发清理副作用
 
-`getRoomPlayers()` 每次读取时检查并调用 `leaveRoom()`，使读取请求产生删除和游戏状态写入。
+`getRoomPlayers()` 目前在读取时检查并执行离线成员删除，导致一个 GET 产生写入、房主转移和事件广播。将清理移到定时任务/后台 worker，或使用带锁的低频 cleanup；读取接口保持纯读并保证清理幂等。
 
-方案：
+## 四、P1：数据库与并发一致性
 
-- 查询接口保持纯读。
-- 通过定时任务/Worker 独立清理离线玩家。
-- 清理操作增加事务和幂等保护。
+### 1. 使用事务完成原子动作
 
-### 2. 缩减快照接口查询
+将“读取版本 → 校验动作 → 更新 game_states → 写 game_actions/日志 → 发布房间事件”放入同一事务，使用 `SELECT ... FOR UPDATE` 或条件更新保证同一房间动作串行。当前 `game_actions` 的 `ON CONFLICT DO NOTHING` 不能替代动作状态确认，应增加明确的唯一索引 `(room_id, action_id)` 和结果字段。
 
-涉及：`src/app/api/rooms/[roomId]/snapshot/route.ts:11-18`。
+### 2. 优化 JSONB 写放大
 
-一次快照调用 `getRoom`、`getRoomPlayers`、`getGameState`、`getUserByUsername`；`getGameState` 还会查询最多 200 条聊天记录。
+短期限制日志/聊天长度并监控快照大小；中期将动作事件作为事实来源，game state 仅保存可恢复快照，按固定版本定期写入 `game_state_snapshots`。恢复时从最近快照重放有限事件，避免每次动作复制整份 JSONB。
 
-方案：
+### 3. 补充索引、连接池和超时监控
 
-- 首屏只返回房间基础信息、玩家列表和游戏必要字段。
-- 用户战绩延迟加载。
-- 聊天独立接口或增量事件加载。
-- 用 JOIN/批量查询减少数据库往返。
-- 保持按 viewer 投影隐藏牌面。
+为 `room_messages(room_id, created_at)`、`game_actions(room_id, created_at)`、`match_history(username, ended_at)` 建立复合索引并用 `EXPLAIN ANALYZE` 验证。连接池 `max=20`、2 秒连接超时应根据部署并发压测调参；为查询设置 statement timeout，避免慢查询长期占满连接池。
 
-### 3. SSE 推送增量事件
+现有 metrics 已记录请求/数据库平均延迟，但缺少 P95/P99、按路由/SQL 分类和 SSE 连接数；补充这些指标及告警阈值，管理后台展示连接池等待、快照大小、版本冲突和重连率。
 
-涉及：`src/app/api/rooms/[roomId]/events/route.ts:24-40`。
+## 五、P2：移动端和网络体验
 
-当前每个事件都会重新查询四类数据并序列化完整状态，快速事件还可能并发执行 `push()`，造成旧响应覆盖新状态。
+- 页面不可见时暂停房间 SSE、在线刷新和倒计时；`pageshow`/`visibilitychange` 恢复后立即同步一次，避免后台浏览器恢复时显示旧回合。
+- 对 SSE、快照和动作请求设置统一超时、网络错误提示与可恢复重试；区分 401、404、409、429、5xx，避免全部显示为“同步失败”。
+- 首屏使用 `loading.tsx`/Suspense 骨架，先输出房间标题、成员槽位和棋盘骨架，再加载聊天、统计与动画；尊重 `prefers-reduced-motion`。
+- 对 Framer Motion、Lucide 图标和低频弹窗做按需加载；检查生产 bundle、字体和 CSS 体积，启用 gzip/brotli 与静态资源长期缓存。
+- 聊天输入限制、日志滚动和结算弹窗需在 320–430px 及横屏设备上进行真实 E2E 截图回归。
 
-建议推送：
+## 六、测试与验收指标
 
-```json
-{"type":"turn_changed","version":18,"currentTurn":"Alice"}
-```
+### 功能与安全回归
 
-增加 50～100ms debounce/single-flight、客户端 version 丢旧、聊天/成员/回合分事件推送。
+- 多玩家同时 `confirm_setup`、猜牌和重连时不得丢动作、重复结算或越权看到未公开牌。
+- 断线超过 5 分钟才清理房间成员；显式退出立即生效，房主转移只发生一次。
+- 牌堆耗尽、玩家认输、最后一名存活者和游戏结束复盘均有自动化测试。
 
-### 4. 不要 25 秒强制断开 SSE
+### 性能目标
 
-涉及：`src/app/api/rooms/[roomId]/events/route.ts:41-47`、`RoomClient.tsx:239`。
-
-当前连接 25 秒关闭，客户端 2 秒后重连，导致周期性完整查询。
-
-方案：
-
-- 连接延长到 5～15 分钟，或改长连接。
-- 使用 `Last-Event-ID`/version 断线续传。
-- 重连指数退避（2s、4s、8s、16s）。
-- 页面隐藏时暂停，恢复时只同步最新版本。
-
-### 5. 请求取消与竞态保护
-
-为 `fetchSnapshot`、`fetchRoomAndPlayers` 和游戏动作请求增加 `AbortController`；组件卸载时取消请求；使用请求序号或服务器 version 丢弃旧响应；动作按钮增加 pending 防重复提交。
-
-## 四、P1：缩小状态和响应体
-
-当前 `game_data` 同时保存牌堆、手牌、日志和聊天，`getGameState` 每次还附加聊天记录。
-
-方案：
-
-- `game_states` 仅保存当前快照。
-- `room_messages` 分页或增量加载聊天。
-- `game_actions` 保存动作事件和审计记录。
-- 日志限制最近 N 条。
-- 普通回合变化不传输完整聊天、牌堆和无关字段。
-- 未公开牌只返回 id、颜色、位置、公开状态。
-
-## 五、P2：前端首屏和交互体验
-
-### 1. 拆分大型客户端组件
-
-当前 `RoomClient.tsx` 约 80KB，`HomeClient.tsx` 约 48KB。拆分为 `RoomHeader`、`PlayerList`、`GameBoard`、`ChatPanel`、`GameOverModal`、`CreateRoomForm`、`JoinRoomForm`、`RoomList`。帮助、结算、特殊牌操作等低频模块使用动态 import。
-
-### 2. 使用 Server Component 输出静态首屏
-
-在 Server Component 中读取 Session 和房间基础信息，作为 props 传入客户端；增加 `loading.tsx`/Suspense 输出服务端骨架。理想流程是服务端先输出房间基础骨架，客户端随后只负责实时连接和交互。
-
-### 3. 控制动画
-
-首屏避免整页复杂入场动画；只对低频弹窗和状态变化做动画；使用明确 transition 属性，不使用 `transition: all`；保留 `active:scale-[0.96]` 按压反馈和 reduced-motion 支持。
-
-## 六、推荐实施顺序
-
-### 第一阶段：立即实施
-
-1. 去掉创建/加入房间后的延迟。
-2. 消除大厅和房间首次重复请求。
-3. 增加房间 Skeleton 和分阶段加载提示。
-4. 增加 AbortController 和重复提交保护。
-
-### 第二阶段：降低后端压力
-
-1. 移除读取时的离线清理副作用。
-2. SSE 增加 debounce、version 和竞态保护。
-3. 延长 SSE 生命周期或支持断线续传。
-4. 拆分聊天、日志和游戏快照。
-
-### 第三阶段：架构级优化
-
-1. Server Component 预渲染房间基础信息。
-2. 完整快照改为增量事件同步。
-3. 拆分大型客户端组件并动态加载低频模块。
-4. 建立缓存、版本化快照和数据库查询监控。
-
-## 七、验收指标
-
-优化前后对比：
-
-- FCP、首次房间内容出现时间。
-- `/snapshot` 和 SSE 首次快照耗时。
-- 首屏有效数据请求数量。
-- SSE 每分钟重连次数。
-- 单房间每分钟数据库查询次数。
-- 游戏状态响应体大小。
-- 聊天查询耗时。
-- 客户端 JS 下载体积和 hydration 时间。
-
-建议目标：
-
-- 首次进入房间只产生一次初始化请求。
-- 房间基础信息在 500ms～1s 内可见（取决于环境）。
-- 正常在线期间不发生周期性 25 秒重连。
-- 普通回合变化不传输完整聊天和完整游戏快照。
-- 页面不可见时不执行高频同步。
-
-## 八、结论
-
-最值得优先处理的是：
-
-1. 首次快照与 SSE 重复取数。
-2. SSE 25 秒强制断开造成周期性查询。
-3. 读取房间时触发离线清理。
-4. 全屏 Spinner 导致感知等待过长。
-5. 大型客户端组件阻塞 hydration 和首屏交互。
-
-第一阶段会直接改善“进入房间速度”；第二、三阶段会进一步解决多人并发下的数据库压力和实时同步稳定性。
-
+| 指标 | 目标 |
+| --- | --- |
+| 首次大厅/房间有效初始化请求 | ≤ 1 次 |
+| 房间基础骨架可见时间 | 500ms–1s（依环境） |
+| 正常在线 SSE 重连 | 无固定周期重连；网络故障指数退避 |
+| 普通回合事件 payload | 仅增量字段，较完整快照减少 50% 以上 |
+| 房间状态数据库查询 | 单次事件最多 1 个聚合查询，避免并发重复 push |
+| 动作 P95 延迟 | 本地 ≤200ms，生产环境按压测基线设定 |
+| 版本冲突率 | <1%，并可定位到房间/动作 |
+| 数据库连接池等待 | 持续为 0 |
+
+## 七、推荐实施顺序
+
+1. 合并首屏快照、请求取消、动作 pending 和版本竞态保护。
+2. SSE debounce/single-flight、增量事件与指数退避。
+3. 拆分 `RoomClient`，分离聊天和日志，减少快照体积。
+4. 将房间离线清理移出 GET，补齐事务、唯一索引和并发测试。
+5. 增加数据库复合索引、P95/P99 指标、压测基线和移动端 E2E。
+6. 最后实施事件溯源/快照重放与 Server Component 首屏预渲染等架构级改造。
